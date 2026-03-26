@@ -121,7 +121,10 @@ async function lineAPI(token, method, path, body = null) {
   return text ? JSON.parse(text) : {};
 }
 
-async function getProfile(token, userId) {
+async function getProfile(token, userId, groupId = null) {
+  if (groupId) {
+    return lineAPI(token, 'GET', `/v2/bot/group/${groupId}/member/${userId}`);
+  }
   return lineAPI(token, 'GET', `/v2/bot/profile/${userId}`);
 }
 
@@ -285,7 +288,8 @@ async function handleWebhook(botKey, events) {
         console.log(`${bot.emoji} [MSG] ${bot.name} ← "${event.message.text.substring(0, 50)}" from ${userId}`);
 
         // Step 1: Get LINE profile
-        const profile = await getProfile(bot.channelAccessToken, userId).catch(e => {
+        const groupId = event.source.groupId || null;
+        const profile = await getProfile(bot.channelAccessToken, userId, groupId).catch(e => {
           console.warn(`⚠️ getProfile failed: ${e.message}`);
           return { displayName: 'ไม่ทราบ' };
         });
