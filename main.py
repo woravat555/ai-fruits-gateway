@@ -152,6 +152,27 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Railway Gateway v2.0 — Multi-AI Agent", version="2.0.0")
 
 
+# ==================== Deduplication ====================
+# ป้องกัน LINE retry ซ้ำ — จำ message ID ที่ประมวลผลแล้ว
+processed_messages: set = set()
+processed_messages_lock = asyncio.Lock()
+
+async def is_duplicate(msg_id: str) -> bool:
+    """ตรวจว่า message ID นี้ถูกประมวลผลแล้วหรือยัง"""
+    if not msg_id:
+        return False
+    async with processed_messages_lock:
+        if msg_id in processed_messages:
+            return True
+        processed_messages.add(msg_id)
+        # จำกัดขนาด set ไม่ให้ใหญ่เกินไป
+        if len(processed_messages) > 5000:
+            # ลบทิ้งครึ่งหนึ่ง
+            to_remove = list(processed_messages)[:2500]
+            for item in to_remove:
+                processed_messages.discard(item)
+        return False
+
 # ==================== Monitor System ====================
 
 class BotMonitor:
@@ -687,9 +708,14 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
 
         # รองรับเฉพาะ message events
         if event_type != "message":
-            # Follow/Unfollow/Join/Leave events — log only
             if event_type == "follow":
                 logger.info(f"[{bot_id}] New follower: {event.get('source', {}).get('userId', 'unknown')}")
+            continue
+
+        # ป้องกันข้อความซ้ำ (LINE retry)
+        msg_id_check = event.get("message", {}).get("id", "")
+        if msg_id_check and await is_duplicate(f"{bot_id}:{msg_id_check}"):
+            logger.warning(f"[DEDUP] Skipping duplicate message {msg_id_check} for {bot_id}")
             continue
 
         reply_token = event.get("replyToken", "")
