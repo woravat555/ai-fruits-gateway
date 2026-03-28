@@ -486,31 +486,47 @@ async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
     return None
 
 
-async def line_reply(bot_id: str, reply_token: str, text: str):
-    """ตอบกลับ LINE ด้วย Reply API (ฟรี ไม่เสียโควต้า)"""
+async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""):
+    """ตอบกลับ LINE — ลอง Reply API ก่อน ถ้าล้มเหลวใช้ Push API แทน"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
+    logger.info(f"[REPLY] bot={bot_id}, has_token={bool(token)}, reply_token={reply_token[:20] if reply_token else 'NONE'}...")
     if not token:
+        logger.warning(f"[REPLY] NO TOKEN for {bot_id} — cannot reply!")
         return
-    try:
-        # ตัดข้อความไม่เกิน 5000 ตัวอักษร (LINE limit)
-        if len(text) > 4900:
-            text = text[:4900] + "..."
+    # ตัดข้อความไม่เกิน 5000 ตัวอักษร (LINE limit)
+    if len(text) > 4900:
+        text = text[:4900] + "..."
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                "https://api.line.me/v2/bot/message/reply",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "replyToken": reply_token,
-                    "messages": [{"type": "text", "text": text}],
-                },
-            )
-    except Exception as e:
-        logger.error(f"LINE reply error: {e}")
+    reply_success = False
+    # 1. ลอง Reply API ก่อน (ฟรี ไม่เสียโควต้า)
+    if reply_token:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.line.me/v2/bot/message/reply",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"replyToken": reply_token, "messages": [{"type": "text", "text": text}]},
+                )
+                logger.info(f"[REPLY] Reply API: {resp.status_code} {resp.text[:200]}")
+                if resp.status_code == 200:
+                    reply_success = True
+        except Exception as e:
+            logger.error(f"[REPLY] Reply API error: {e}")
+
+    # 2. ถ้า Reply ล้มเหลว ใช้ Push API แทน (เสียโควต้า แต่ดีกว่าไม่ตอบ)
+    if not reply_success and user_id:
+        logger.warning(f"[REPLY] Reply failed, falling back to Push API for {user_id}")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"to": user_id, "messages": [{"type": "text", "text": text}]},
+                )
+                logger.info(f"[REPLY] Push API fallback: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            logger.error(f"[REPLY] Push API error: {e}")
 
 
 def verify_line_signature(body: str, secret: str, signature: str) -> bool:
@@ -707,9 +723,8 @@ async def process_webhook(bot_id: str, request_body: Dict, background_tasks: Bac
             # ส่งแจ้งเตือน CEO ทันที
             background_tasks.add_task(send_error_alert, bot_id, "AI_BRAIN_ERROR", str(e))
 
-        # ตอบกลับ LINE (ใช้ Reply API — ฟรี)
-        if reply_token:
-            await line_reply(bot_id, reply_token, ai_response)
+        # ตอบกลับ LINE (Reply API ก่อน → Push API fallback)
+        await line_reply(bot_id, reply_token, ai_response, user_id=user_id)
 
         # บันทึกลง Airtable (non-blocking)
         background_tasks.add_task(
