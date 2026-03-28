@@ -141,6 +141,9 @@ AIRTABLE_PAT = os.getenv("AIRTABLE_PAT", "")
 # Claude model
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
+# Error Alert Webhook — ส่งแจ้งเตือนผ่าน LINE ExecCopilot ถ้ามี error
+ERROR_ALERT_WEBHOOK = os.getenv("ERROR_ALERT_WEBHOOK", "")
+
 # ==================== Setup ====================
 
 logging.basicConfig(level=logging.INFO)
@@ -188,6 +191,69 @@ class BotMonitor:
 
 
 monitor = BotMonitor()
+
+
+# ==================== Error Alert System ====================
+
+async def send_error_alert(bot_id: str, error_type: str, detail: str):
+    """ส่งแจ้งเตือน error ไปที่ CEO ผ่าน LINE ExecCopilot"""
+    try:
+        # 1. Log ลง monitor
+        await monitor.log_message(
+            bot_id=bot_id, bot_name=BOTS_CONFIG.get(bot_id, {}).get("name", bot_id),
+            sender="SYSTEM", message_in=f"[ERROR] {error_type}",
+            message_out=detail[:200], msg_type="error",
+            ai_used="none", status="error", response_ms=0,
+        )
+        # 2. ส่ง LINE Push แจ้ง CEO (ถ้ามี token)
+        env = get_env_vars()
+        exec_token = env.get("execcopilot", {}).get("token", "")
+        ceo_user_id = os.getenv("CEO_LINE_USERID", "")
+        if exec_token and ceo_user_id:
+            alert_msg = f"[Railway Alert] {bot_id}\n{error_type}: {detail[:300]}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Authorization": f"Bearer {exec_token}", "Content-Type": "application/json"},
+                    json={"to": ceo_user_id, "messages": [{"type": "text", "text": alert_msg}]},
+                )
+        logger.error(f"[ALERT] {bot_id} — {error_type}: {detail}")
+    except Exception as e:
+        logger.error(f"Alert send failed: {e}")
+
+
+async def self_diagnostic() -> Dict:
+    """ตรวจสอบระบบทั้งหมด — env vars, API keys, LINE tokens"""
+    results = {"timestamp": datetime.now().isoformat(), "checks": {}}
+
+    # ตรวจ API keys
+    api_checks = {
+        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
+        "PERPLEXITY_API_KEY": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
+        "AIRTABLE_PAT": bool(AIRTABLE_PAT),
+    }
+    results["checks"]["api_keys"] = api_checks
+
+    # ตรวจ LINE tokens
+    env = get_env_vars()
+    line_checks = {}
+    for bot_id, creds in env.items():
+        line_checks[bot_id] = {
+            "token": bool(creds.get("token")),
+            "secret": bool(creds.get("secret")),
+        }
+    results["checks"]["line_tokens"] = line_checks
+
+    # สรุป
+    all_api_ok = all(api_checks.values())
+    all_line_ok = all(c["token"] for c in line_checks.values())
+    results["healthy"] = all_api_ok and all_line_ok
+    results["missing"] = [k for k, v in api_checks.items() if not v]
+    results["missing"] += [f"LINE_{k}" for k, v in line_checks.items() if not v["token"]]
+
+    return results
 
 
 # ==================== Airtable Functions ====================
@@ -459,26 +525,27 @@ def verify_line_signature(body: str, secret: str, signature: str) -> bool:
 
 
 def get_env_vars() -> Dict:
+    """ดึง LINE credentials — รองรับทั้งชื่อเก่า (server.js) และชื่อใหม่ (main.py)"""
     return {
         "phrae555": {
-            "token": os.getenv("LINE_TOKEN_PHRAE555", ""),
-            "secret": os.getenv("LINE_SECRET_PHRAE555", ""),
+            "token": os.getenv("LINE_TOKEN_PHRAE555", "") or os.getenv("PHRAE555_CHANNEL_ACCESS_TOKEN", ""),
+            "secret": os.getenv("LINE_SECRET_PHRAE555", "") or os.getenv("PHRAE555_CHANNEL_SECRET", ""),
         },
         "930pchss": {
-            "token": os.getenv("LINE_TOKEN_930PCHSS", ""),
-            "secret": os.getenv("LINE_SECRET_930PCHSS", ""),
+            "token": os.getenv("LINE_TOKEN_930PCHSS", "") or os.getenv("SALES_CHANNEL_ACCESS_TOKEN", "") or os.getenv("930PCHSS_CHANNEL_ACCESS_TOKEN", ""),
+            "secret": os.getenv("LINE_SECRET_930PCHSS", "") or os.getenv("SALES_CHANNEL_SECRET", "") or os.getenv("930PCHSS_CHANNEL_SECRET", ""),
         },
         "aiphrae": {
-            "token": os.getenv("LINE_TOKEN_AIPHRAE", ""),
-            "secret": os.getenv("LINE_SECRET_AIPHRAE", ""),
+            "token": os.getenv("LINE_TOKEN_AIPHRAE", "") or os.getenv("AIPHRAE_CHANNEL_ACCESS_TOKEN", "") or os.getenv("PHRAE_CHANNEL_ACCESS_TOKEN", ""),
+            "secret": os.getenv("LINE_SECRET_AIPHRAE", "") or os.getenv("AIPHRAE_CHANNEL_SECRET", "") or os.getenv("PHRAE_CHANNEL_SECRET", ""),
         },
         "jewelry": {
-            "token": os.getenv("LINE_TOKEN_JEWELRY", ""),
-            "secret": os.getenv("LINE_SECRET_JEWELRY", ""),
+            "token": os.getenv("LINE_TOKEN_JEWELRY", "") or os.getenv("JEWELRY_CHANNEL_ACCESS_TOKEN", ""),
+            "secret": os.getenv("LINE_SECRET_JEWELRY", "") or os.getenv("JEWELRY_CHANNEL_SECRET", ""),
         },
         "execcopilot": {
-            "token": os.getenv("LINE_TOKEN_EXECCOPILOT", ""),
-            "secret": os.getenv("LINE_SECRET_EXECCOPILOT", ""),
+            "token": os.getenv("LINE_TOKEN_EXECCOPILOT", "") or os.getenv("EXEC_CHANNEL_ACCESS_TOKEN", "") or os.getenv("EXECCOPILOT_CHANNEL_ACCESS_TOKEN", ""),
+            "secret": os.getenv("LINE_SECRET_EXECCOPILOT", "") or os.getenv("EXEC_CHANNEL_SECRET", "") or os.getenv("EXECCOPILOT_CHANNEL_SECRET", ""),
         },
     }
 
@@ -637,6 +704,8 @@ async def process_webhook(bot_id: str, request_body: Dict, background_tasks: Bac
         except Exception as e:
             logger.error(f"AI Brain error: {e}")
             ai_response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+            # ส่งแจ้งเตือน CEO ทันที
+            background_tasks.add_task(send_error_alert, bot_id, "AI_BRAIN_ERROR", str(e))
 
         # ตอบกลับ LINE (ใช้ Reply API — ฟรี)
         if reply_token:
@@ -694,7 +763,7 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
 async def health():
     return {
         "status": "healthy",
-        "version": "2.0.0-multi-ai",
+        "version": "2.0.1-multi-ai",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
@@ -703,6 +772,12 @@ async def health():
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
     }
+
+
+@app.get("/diagnostic")
+async def diagnostic():
+    """ตรวจสอบระบบทั้งหมด — API keys, LINE tokens, สถานะ"""
+    return await self_diagnostic()
 
 
 @app.get("/monitor", response_class=HTMLResponse)
