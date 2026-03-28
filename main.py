@@ -667,7 +667,14 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
 
 # ==================== Webhook Processing ====================
 
-async def process_webhook(bot_id: str, request_body: Dict, background_tasks: BackgroundTasks):
+async def process_webhook_background(bot_id: str, request_body: Dict):
+    """Background wrapper — เรียก process_webhook โดยไม่ต้องใช้ BackgroundTasks"""
+    try:
+        await process_webhook_core(bot_id, request_body)
+    except Exception as e:
+        logger.error(f"Background webhook error: {e}")
+
+async def process_webhook_core(bot_id: str, request_body: Dict):
     """ประมวลผล LINE webhook — AI ตอบตรง"""
     start_time = time.time()
 
@@ -721,23 +728,21 @@ async def process_webhook(bot_id: str, request_body: Dict, background_tasks: Bac
             logger.error(f"AI Brain error: {e}")
             ai_response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
             # ส่งแจ้งเตือน CEO ทันที
-            background_tasks.add_task(send_error_alert, bot_id, "AI_BRAIN_ERROR", str(e))
+            asyncio.ensure_future(send_error_alert(bot_id, "AI_BRAIN_ERROR", str(e)))
 
         # ตอบกลับ LINE (Reply API ก่อน → Push API fallback)
         await line_reply(bot_id, reply_token, ai_response, user_id=user_id)
 
         # บันทึกลง Airtable (non-blocking)
-        background_tasks.add_task(
-            airtable_save_message,
+        asyncio.ensure_future(airtable_save_message(
             user_id, bot_id, display_name,
             msg_text if msg_type == "text" else f"[{msg_type}]",
             ai_response,
-        )
+        ))
 
         # Log to monitor
         elapsed = (time.time() - start_time) * 1000
-        background_tasks.add_task(
-            monitor.log_message,
+        asyncio.ensure_future(monitor.log_message(
             bot_id=bot_id,
             bot_name=bot_name,
             sender=display_name,
@@ -747,7 +752,7 @@ async def process_webhook(bot_id: str, request_body: Dict, background_tasks: Bac
             ai_used="claude",
             status="success",
             response_ms=round(elapsed),
-        )
+        ))
 
 
 # ==================== Routes ====================
@@ -770,7 +775,9 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     request_body = json.loads(body_str)
-    await process_webhook(bot_id, request_body, background_tasks)
+    # ตอบ LINE 200 ทันที แล้วประมวลผลใน background
+    # ป้องกัน LINE retry ซ้ำ (LINE timeout ~1 วินาที)
+    background_tasks.add_task(process_webhook_background, bot_id, request_body)
     return {"status": "ok"}
 
 
