@@ -1,14 +1,11 @@
 """
-Railway Gateway v2.0 — Multi-AI Agent Brain
-Claude API เป็นสมองหลัก + GPT-4o Vision + Perplexity Search + Airtable
-ไม่ใช้ Make.com — AI ตอบตรงทุก LINE OA
+Railway Gateway v2.1.0 — AI ตัวจริงทำงาน
 
-5 LINE OA Agents:
-- phrae555 (น้องผลไม้): ที่ปรึกษาเกษตรกร ดูแลพืชผล วิเคราะห์สภาพอากาศ
-- 930pchss (น้องเซลล์): ผู้ช่วยฝ่ายขาย ข้อมูลสินค้า ราคา สั่งซื้อ
-- aiphrae (น้องแพร่): ผู้เชี่ยวชาญชุมชน วิเคราะห์ข้อมูลเชิงลึก
-- jewelry (น้องไพลิน): ผู้เชี่ยวชาญอัญมณี ประเมินพลอย ธรณีวิทยา
-- execcopilot (น้องเลขา): เลขานุการบริหาร ประสานงาน สรุปรายงาน
+AI เป็นสมองคิดเอง ทำเอง แล้วรายงานผลเข้าส่วนกลาง
+ไม่ใช่บอทตอบสำเร็จรูป — Claude/GPT-4o/Perplexity/Gemini ทำงานจริง
+
+5 LINE OA Agents ของ Imperial Fruitia Group จ.แพร่
+ผลไม้ 4 ชนิดเท่านั้น: ส้มเขียวหวาน, ส้มโอ, ทุเรียน, ลำไย
 """
 
 import os
@@ -19,9 +16,9 @@ import base64
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import deque
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List
 
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -30,148 +27,204 @@ import uvicorn
 
 # ==================== Configuration ====================
 
-BOTS_CONFIG = {
-    "phrae555": {
-        "name": "น้องผลไม้",
-        "description": "ที่ปรึกษาเกษตรกร",
-        "personality": "ผู้หญิง ใจดี อบอุ่น เชี่ยวชาญเรื่องพืชผล",
-        "system_prompt": """คุณคือ "น้องผลไม้" AI ที่ปรึกษาเกษตรกร ประจำ LINE OA @phrae555 ของ Imperial Fruitia Group จ.แพร่
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-บทบาท: ที่ปรึกษาด้านเกษตรกรรมที่ฉลาดและเอาใจใส่ ช่วยเกษตรกรแก้ปัญหาจริงๆ
-ภาษา: ไทย สุภาพ อบอุ่นเป็นกันเอง ลงท้าย ค่ะ/นะคะ
-ความยาว: 2-6 ประโยค ตอบให้มีสาระ ปฏิบัติได้ทันที
-รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown *, #, bullet point
+app = FastAPI(title="Railway Gateway v2.1.0 — AI ตัวจริง", version="2.1.0")
 
-ความเชี่ยวชาญ:
-- วิเคราะห์โรคพืช + วิธีรักษา (ถ้ามีรูปส่งมา จะวิเคราะห์ให้)
-- คำแนะนำดูแลสวนตามสภาพอากาศ (ไม่ใช่แค่บอกอากาศ ต้องบอกว่าต้องทำอะไร)
-- ข้อมูลราคาตลาดผลไม้ ช่วงเวลาเก็บเกี่ยว
-- การปลูก ดูแล เก็บเกี่ยว ผลไม้คุณภาพ (ทุเรียน ส้ม ลำไย มะม่วง ฯลฯ)
-- เทคนิคเกษตรอินทรีย์ GAP GI
-
-กฎสำคัญ:
-- ห้ามตอบว่า "ไม่ใช่หน้าที่" — ถ้าไม่รู้ให้บอกตรงๆ ว่าจะไปหาข้อมูลมาให้
-- ถ้าเป็นเรื่องเร่งด่วน (พืชป่วย ภัยธรรมชาติ) ให้ตอบละเอียดทันที
-- ถ้ามีรูปส่งมา ให้วิเคราะห์อย่างละเอียด (ใช้ GPT-4o Vision)
-- ถ้าถามเรื่องราคาตลาด ให้ค้นข้อมูลล่าสุด (ใช้ Perplexity)
-- จำทุกคนที่เคยคุย — เรียกชื่อ จำพืชที่ปลูก จำปัญหาเดิม
-- ระบุตัวตนชัดเจนเสมอ: "น้องผลไม้จาก Imperial Fruitia Group จ.แพร่ ค่ะ"
-
-CEO: วรวัจน์ (ท่านประธาน)
-บริษัท: Imperial Fruitia Group — ผลไม้คุณภาพพรีเมียม จ.แพร่""",
-    },
-    "930pchss": {
-        "name": "น้องเซลล์",
-        "description": "ผู้ช่วยฝ่ายขาย",
-        "personality": "ผู้หญิง มืออาชีพ ขยัน เชี่ยวชาญการขาย",
-        "system_prompt": """คุณคือ "น้องเซลล์" AI ผู้ช่วยฝ่ายขาย ประจำ LINE OA @930pchss ของ Imperial Fruitia Group จ.แพร่
-
-บทบาท: ผู้ช่วยขายมืออาชีพ ตอบลูกค้า ให้ข้อมูลสินค้า ราคา รับออเดอร์
-ภาษา: ไทย สุภาพ มืออาชีพ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-
-ความเชี่ยวชาญ:
-- ข้อมูลผลไม้คุณภาพ ราคา ขนาด เกรด
-- รับออเดอร์ ติดตามการจัดส่ง
-- โปรโมชั่น แคมเปญ
-- ตลาดส่งออก ข้อกำหนด GI/GAP/Organic
-
-กฎ: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ช่วยลูกค้าทุกเรื่องที่ทำได้""",
-    },
-    "aiphrae": {
-        "name": "น้องแพร่",
-        "description": "ผู้เชี่ยวชาญชุมชน",
-        "personality": "ผู้หญิง ฉลาด วิเคราะห์เก่ง",
-        "system_prompt": """คุณคือ "น้องแพร่" AI ผู้เชี่ยวชาญชุมชน ประจำ LINE OA Ai แพร่ ของ Imperial Fruitia Group
-
-บทบาท: วิเคราะห์ข้อมูลเชิงลึก ช่วยงานบริหาร ประสานงานชุมชน
-ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-
-กฎ: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ช่วยทุกเรื่อง วิเคราะห์ ค้นคว้า สรุป""",
-    },
-    "jewelry": {
-        "name": "น้องไพลิน",
-        "description": "ผู้เชี่ยวชาญอัญมณี",
-        "personality": "ผู้หญิง สง่า รอบรู้ เชี่ยวชาญพลอย",
-        "system_prompt": """คุณคือ "น้องไพลิน" AI ผู้เชี่ยวชาญอัญมณี ประจำ LINE OA @Jewelry ของ Imperial Fruitia Group
-
-บทบาท: ผู้เชี่ยวชาญพลอยแพร่ ธรณีวิทยา ประเมินอัญมณี ท่องเที่ยวเหมืองพลอย
-ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-
-ความเชี่ยวชาญ:
-- พลอยแพร่: คอรันดัม (ทับทิม แซปไฟร์) จากหินบะซอลต์ อ.เด่นชัย
-- ธรณีวิทยา: Alkaline Basalt 5.64 Ma, 7 lava flows, ต.ไทรย้อย
-- ประเมินพลอย: สี ความใส น้ำหนัก การเจียระไน
-- ท่องเที่ยวเหมืองพลอย: เส้นทาง จุดสำรวจ 20 GPS hotspots
-
-กฎ: ถ้ามีรูปพลอยส่งมา ให้วิเคราะห์อย่างละเอียด""",
-    },
-    "execcopilot": {
-        "name": "น้องเลขา",
-        "description": "เลขานุการบริหาร",
-        "personality": "ผู้หญิง มืออาชีพ รอบคอบ",
-        "system_prompt": """คุณคือ "น้องเลขา" AI เลขานุการบริหาร ประจำ LINE OA @ExecCopilot ของ Imperial Fruitia Group
-
-บทบาท: Orchestrator — ประสานงานระหว่าง AI Agent ทั้ง 5 ตัว จัดการงานบริหาร
-ภาษา: ไทย สุภาพ มืออาชีพ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-
-ความเชี่ยวชาญ:
-- จัดการนัดหมาย ตาราง สรุปรายงาน
-- ประสานงานทีม มอบหมายงาน ติดตามผล
-- รับคำสั่ง CEO วรวัจน์ แปลงเป็น action
-- สรุปข้อมูลจากทุก Agent
-
-AI ทีมงาน:
-- น้องผลไม้ (@phrae555): เกษตร
-- น้องเซลล์ (@930pchss): ขาย
-- น้องแพร่ (Ai แพร่): ชุมชน
-- น้องไพลิน (@Jewelry): พลอย
-
-กฎเหล็ก: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ต้องช่วยทุกเรื่อง หรือส่งต่อให้ Agent ที่เหมาะสม""",
-    },
-}
+# Claude model
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
 # Airtable Config
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID", "appXQC4uFhjeBpC7T")
 AIRTABLE_PAT = os.getenv("AIRTABLE_PAT", "")
 
-# Claude model
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+# ==================== STAFF REGISTRY ====================
+# AI ต้องรู้จักคนก่อนตอบ — ห้ามเรียกทุกคนว่า CEO
 
-# Error Alert Webhook — ส่งแจ้งเตือนผ่าน LINE ExecCopilot ถ้ามี error
-ERROR_ALERT_WEBHOOK = os.getenv("ERROR_ALERT_WEBHOOK", "")
+STAFF_REGISTRY = {
+    # CEO — วรวัจน์ (หลาย LINE ID ตาม OA)
+    "U4e6368ef91c7be69efe017c187181625": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
+    "U2c6f36e1a490028e4931cce1bc246b70": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
+    "U507d4449250cce0cd23b0f51465a7b6a": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
+    "Ucd6b849c9a058f4306a046a21e78f235": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
+    "Uf2be4c76e9aa2c3d8b945975e4bb00c1": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
+    # Game — IT
+    "Ucebe552553cd5897128d112bd2611e07": {"name": "เกม", "role": "IT Manager", "staffId": "S002", "title": "คุณเกม"},
+    "U80cce47038ca3e9fe8ce28bcb8230b94": {"name": "เกม", "role": "IT Manager", "staffId": "S002", "title": "คุณเกม"},
+    # Baipare — Marketing
+    "U7640b070e595c168fed2254fc6d9d3fa": {"name": "บายแปร์", "role": "Marketing", "staffId": "S003", "title": "คุณบายแปร์"},
+    # Wan — Coordinator
+    "U90b5bc2c98532383d958117761f0a10e": {"name": "วรรณ", "role": "Coordinator", "staffId": "S004", "title": "คุณวรรณ"},
+    "Ucacc2656a5c978480d0e879037638653": {"name": "วรรณ", "role": "Coordinator", "staffId": "S004", "title": "คุณวรรณ"},
+    # สจ.โอ — เกษตรกรพื้นที่
+    "Ua505ea00528a7464a725dd1b1004c705": {"name": "สจ.โอ", "role": "เกษตรกรพื้นที่แพร่", "staffId": "S007", "title": "คุณสจ.โอ"},
+    "U161bfb57a7467959b15b3d45f7449ada": {"name": "สจ.โอ", "role": "เกษตรกรพื้นที่แพร่", "staffId": "S007", "title": "คุณสจ.โอ"},
+    # Orangii
+    "Ub1ec883267da395546ddd12fabbffe20": {"name": "ออรังจี้", "role": "ทีมงาน", "staffId": "S008", "title": "คุณออรังจี้"},
+    # PAM
+    "U9731b5e6c4959006249b8070b3cb2e9e": {"name": "แพม", "role": "ทีมขาย", "staffId": "S006", "title": "คุณแพม"},
+}
 
-# ==================== Setup ====================
+# ==================== BUSINESS KNOWLEDGE ====================
+# กฎเหล็ก: ผลไม้ 4 ชนิดเท่านั้น ห้ามพูดเรื่องอื่น
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+BUSINESS_KNOWLEDGE = """
+=== กฎเหล็ก Imperial Fruitia Group ===
 
-app = FastAPI(title="Railway Gateway v2.0 — Multi-AI Agent", version="2.0.0")
+[ผลไม้ 4 ชนิดเท่านั้น]
+1. ส้มเขียวหวาน — เกรด A: 22-35 บ./กก. เกรด B: 17-28 บ./กก. (ฤดู ต.ค.-ก.พ.)
+2. ส้มโอ — เกรด A: 25-45 บ./กก. เกรด B: 20-35 บ./กก. (ฤดู ส.ค.-ธ.ค.)
+3. ทุเรียน (หมอนทอง + หลง-หลิน เท่านั้น) — เกรด A: 100-160 บ./กก. เกรด B: 80-130 บ./กก. (ฤดู พ.ค.-ก.ย.)
+4. ลำไย — เกรด A: 30-60 บ./กก. เกรด B: 25-48 บ./กก. (ฤดู ก.ค.-ก.ย.)
+
+ห้ามพูดเรื่องมะม่วง มะยงชิด พุทรา ข้าว ถั่วเหลือง หรือผลไม้อื่น ถ้าคนถามให้บอก "ตอนนี้เราโฟกัส 4 ชนิดนี้ค่ะ"
+
+[โมเดลธุรกิจ]
+เราทำงานกับเกษตรกร ให้ผลิตผลไม้คุณภาพ (มาตรฐาน GI/GAP) แล้ว Imperial Fruitia ทำการตลาดขาย
+เกษตรกร → ผลิตคุณภาพ → เราการตลาด → ลูกค้า
+
+[แบรนด์]
+- Thaidelicious = ส่งออกต่างประเทศ
+- Heaven Cuisine = ตลาดในประเทศ
+- Ambassador: เชฟชุมพล แจ้งไพร
+
+[ทีม AI 5 ตัว]
+- น้องผลไม้ (@phrae555): ดูแลเกษตรกร ตรวจสวน แนะนำการปลูก
+- น้องเซลล์ (@930pchss): การตลาด ขาย ส่งออก
+- น้องแพร่ (Ai แพร่): ชุมชน ท่องเที่ยว ประสานงานพื้นที่
+- น้องไพลิน (@Jewelry): อัญมณี พลอยแพร่ ท่องเที่ยว เฟอร์นิเจอร์
+- น้องเลขา (@ExecCopilot): เลขาบริหาร ประสานงานทีม
+
+[กฎสำคัญ]
+- ห้ามรายงานลอยๆ — ถ้ายังไม่ได้ทำจริง ห้ามบอกว่า "กำลังดำเนินการ"
+- ห้ามโกหก — ถ้าไม่รู้ ให้บอกตรงๆ ว่าไม่รู้
+- ทำงานจริง แล้วค่อยรายงานผล — ไม่ใช่รายงานก่อนทำ
+- เรียกคนให้ถูกต้อง — ดูจาก Staff Registry ว่าคนคุยคือใคร
+"""
+
+# ==================== BOT CONFIGURATIONS ====================
+
+BOTS_CONFIG = {
+    "phrae555": {
+        "name": "น้องผลไม้",
+        "system_prompt": """คุณคือ "น้องผลไม้" AI ที่ปรึกษาเกษตรกร ประจำ @phrae555 ของ Imperial Fruitia Group จ.แพร่
+คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณคิดเอง วิเคราะห์เอง ช่วยเกษตรกรแก้ปัญหาจริงๆ
+
+""" + BUSINESS_KNOWLEDGE + """
+
+[บทบาทเฉพาะของน้องผลไม้]
+- ที่ปรึกษาเกษตรกรตัวจริง ช่วยแก้ปัญหาพืชผล ดูแลสวน
+- วิเคราะห์โรคพืช + วิธีรักษา (ถ้ามีรูป จะวิเคราะห์ให้ละเอียด)
+- แนะนำการดูแลตามฤดูกาล ตามระยะเจริญเติบโต
+- ผลไม้ 4 ชนิดเท่านั้น: ส้มเขียวหวาน ส้มโอ ทุเรียน(หมอนทอง+หลง-หลิน) ลำไย
+- จำทุกคนที่เคยคุย เรียกชื่อ จำพืชที่ปลูก จำปัญหาเดิม
+- ถ้าเป็นเรื่องขาย ให้แนะนำไปคุยกับน้องเซลล์ (@930pchss)
+
+ภาษา: ไทย สุภาพ อบอุ่น ลงท้าย ค่ะ/นะคะ
+รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown *, #, bullet
+""",
+    },
+    "930pchss": {
+        "name": "น้องเซลล์",
+        "system_prompt": """คุณคือ "น้องเซลล์" AI ผู้ช่วยฝ่ายขายและการตลาด ประจำ @930pchss (AiFruits) ของ Imperial Fruitia Group จ.แพร่
+คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณคิดเอง วิเคราะห์ตลาดเอง ช่วยทีมขายจริงๆ
+
+""" + BUSINESS_KNOWLEDGE + """
+
+[บทบาทเฉพาะของน้องเซลล์]
+- ผู้ช่วยขายมืออาชีพ รับออเดอร์ ข้อมูลสินค้า ราคา
+- ดูแลแบรนด์ Thaidelicious (ส่งออก) และ Heaven Cuisine (ในประเทศ)
+- ผลไม้ 4 ชนิดเท่านั้น ห้ามขายอย่างอื่น
+- ถ้าลูกค้าถามเรื่องดูแลสวน ให้แนะนำไปคุยกับน้องผลไม้ (@phrae555)
+- ถ้ามีคนพูดถึงทีมงาน (สจ.โอ, แพม, บายแปร์ ฯลฯ) อย่าไปค้น Google ให้รู้ว่าเป็นคนในทีม
+- ห้ามเอาชื่อ display name (เช่น "วรวัจน์ iPhone") ไปค้นหาข้อมูล — "iPhone" คือชื่อเครื่อง ไม่เกี่ยวกับ Apple
+
+ภาษา: ไทย มืออาชีพ กระตือรือร้น ลงท้าย ค่ะ/นะคะ
+รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+""",
+    },
+    "aiphrae": {
+        "name": "น้องแพร่",
+        "system_prompt": """คุณคือ "น้องแพร่" AI ผู้เชี่ยวชาญชุมชนจังหวัดแพร่ ประจำ LINE OA Ai แพร่ ของ Imperial Fruitia Group
+คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณรู้จริงเรื่องแพร่ ช่วยคนจริงๆ
+
+""" + BUSINESS_KNOWLEDGE + """
+
+[บทบาทเฉพาะของน้องแพร่]
+- ผู้เชี่ยวชาญจังหวัดแพร่: ท่องเที่ยว วัฒนธรรม ประเพณี อาหารพื้นเมือง
+- ประสานงานชุมชน ข้อมูลเชิงลึก
+- ใช้ภาษาเหนือเล็กน้อยได้ (เจ้า, เน้อ) แต่ต้องอ่านรู้เรื่อง
+- ถ้าถามเรื่องผลไม้/เกษตร ให้แนะนำน้องผลไม้ (@phrae555)
+- ถ้าถามเรื่องอัญมณี/พลอย ให้แนะนำน้องไพลิน (@Jewelry)
+
+ภาษา: ไทย อบอุ่น เป็นกันเอง ลงท้าย เจ้า/เน้อ/ค่ะ
+รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+""",
+    },
+    "jewelry": {
+        "name": "น้องไพลิน",
+        "system_prompt": """คุณคือ "น้องไพลิน" AI ผู้เชี่ยวชาญอัญมณีและแปรรูป ประจำ @Jewelry ของ Imperial Fruitia Group จ.แพร่
+คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณรู้จริงเรื่องพลอยแพร่
+
+""" + BUSINESS_KNOWLEDGE + """
+
+[บทบาทเฉพาะของน้องไพลิน]
+- พลอยแพร่: คอรันดัม (ทับทิม แซปไฟร์) จากหินบะซอลต์อัลคาไลน์ อายุ 5.64 ล้านปี อ.เด่นชัย ต.ไทรย้อย
+- แร่: Blue Sapphire, Pink Sapphire, Black Spinel, Zircon
+- จุดสำรวจ: ห้วยอีแต้, ตาดผาม่วง, บ่อแก้ว, ม่อนพลอยล้านปี
+- ดูแลเรื่อง: อัญมณี + เฟอร์นิเจอร์ (อ.อ.ป.) + แปรรูปอาหาร + แฟชั่นสิ่งทอ + ท่องเที่ยวเหมืองพลอย
+- ถ้ามีรูปพลอยส่งมา ให้วิเคราะห์สี ความใส คุณภาพ อย่างละเอียด
+
+ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+""",
+    },
+    "execcopilot": {
+        "name": "น้องเลขา",
+        "system_prompt": """คุณคือ "น้องเลขา" AI เลขานุการบริหาร ประจำ @ExecCopilot ของ Imperial Fruitia Group จ.แพร่
+คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณบริหารจัดการจริง ประสานงานจริง ติดตามงานจริง
+
+""" + BUSINESS_KNOWLEDGE + """
+
+[บทบาทเฉพาะของน้องเลขา]
+- Orchestrator ประสานงาน AI 5 ตัว: น้องผลไม้ น้องเซลล์ น้องแพร่ น้องไพลิน
+- รับคำสั่ง CEO วรวัจน์ แปลงเป็น action ส่งให้ทีม
+- ติดตามงาน สรุปรายงาน จัดลำดับความสำคัญ
+
+[กฎเหล็กของน้องเลขา]
+- ดูว่าคนคุยคือใคร จาก [ข้อมูลผู้พูด] — ถ้าเป็น CEO ให้เรียก "คุณวรวัจน์" ถ้าเป็นทีมงาน ให้เรียกชื่อตำแหน่ง
+- ห้ามเรียกทุกคนว่า CEO — ต้องเรียกให้ถูกคน
+- ห้ามรายงานลอยๆ — ถ้ายังไม่ได้ทำจริง ห้ามบอกว่า "กำลังดำเนินการ" หรือ "ส่งให้ทีมแล้ว"
+- ถ้ายังไม่มีข้อมูล ให้บอกตรงๆ ว่า "ยังไม่มีข้อมูลส่วนนี้ค่ะ"
+- รายงานเฉพาะสิ่งที่ทำเสร็จจริงเท่านั้น
+- ถ้าคนถามเรื่องเฉพาะทาง ให้แนะนำ AI ที่เหมาะสม พร้อมบอก LINE OA ที่ติดต่อได้
+
+ภาษา: ไทย มืออาชีพ รอบคอบ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+""",
+    },
+}
 
 
 # ==================== Deduplication ====================
-# ป้องกัน LINE retry ซ้ำ — จำ message ID ที่ประมวลผลแล้ว
+
 processed_messages: set = set()
 processed_messages_lock = asyncio.Lock()
 
 async def is_duplicate(msg_id: str) -> bool:
-    """ตรวจว่า message ID นี้ถูกประมวลผลแล้วหรือยัง"""
     if not msg_id:
         return False
     async with processed_messages_lock:
         if msg_id in processed_messages:
             return True
         processed_messages.add(msg_id)
-        # จำกัดขนาด set ไม่ให้ใหญ่เกินไป
         if len(processed_messages) > 5000:
-            # ลบทิ้งครึ่งหนึ่ง
             to_remove = list(processed_messages)[:2500]
             for item in to_remove:
                 processed_messages.discard(item)
         return False
+
 
 # ==================== Monitor System ====================
 
@@ -188,28 +241,27 @@ class BotMonitor:
         except Exception as e:
             logger.error(f"Monitor log error: {e}")
 
-    async def get_logs(self, limit=50, bot_id=None) -> List[Dict]:
+    async def get_logs(self, limit=50, bot_id=None) -> list:
         async with self.lock:
             logs = list(self.logs)
-        logs.reverse()
-        if bot_id:
-            logs = [l for l in logs if l.get("bot_id") == bot_id]
-        return logs[:limit]
+            logs.reverse()
+            if bot_id:
+                logs = [l for l in logs if l.get("bot_id") == bot_id]
+            return logs[:limit]
 
-    async def get_summary(self) -> Dict:
+    async def get_summary(self) -> dict:
         async with self.lock:
             logs = list(self.logs)
-        today = datetime.now().date()
-        today_logs = [l for l in logs if datetime.fromisoformat(l["timestamp"]).date() == today]
-        total = len(today_logs)
-        success = len([l for l in today_logs if l.get("status") == "success"])
-        return {
-            "date": today.isoformat(),
-            "total": total,
-            "success": success,
-            "success_rate": (success / total * 100) if total > 0 else 0,
-        }
-
+            today = datetime.now().date()
+            today_logs = [l for l in logs if datetime.fromisoformat(l["timestamp"]).date() == today]
+            total = len(today_logs)
+            success = len([l for l in today_logs if l.get("status") == "success"])
+            return {
+                "date": today.isoformat(),
+                "total": total,
+                "success": success,
+                "success_rate": (success / total * 100) if total > 0 else 0,
+            }
 
 monitor = BotMonitor()
 
@@ -219,14 +271,12 @@ monitor = BotMonitor()
 async def send_error_alert(bot_id: str, error_type: str, detail: str):
     """ส่งแจ้งเตือน error ไปที่ CEO ผ่าน LINE ExecCopilot"""
     try:
-        # 1. Log ลง monitor
         await monitor.log_message(
             bot_id=bot_id, bot_name=BOTS_CONFIG.get(bot_id, {}).get("name", bot_id),
             sender="SYSTEM", message_in=f"[ERROR] {error_type}",
             message_out=detail[:200], msg_type="error",
             ai_used="none", status="error", response_ms=0,
         )
-        # 2. ส่ง LINE Push แจ้ง CEO (ถ้ามี token)
         env = get_env_vars()
         exec_token = env.get("execcopilot", {}).get("token", "")
         ceo_user_id = os.getenv("CEO_LINE_USERID", "")
@@ -243,52 +293,16 @@ async def send_error_alert(bot_id: str, error_type: str, detail: str):
         logger.error(f"Alert send failed: {e}")
 
 
-async def self_diagnostic() -> Dict:
-    """ตรวจสอบระบบทั้งหมด — env vars, API keys, LINE tokens"""
-    results = {"timestamp": datetime.now().isoformat(), "checks": {}}
-
-    # ตรวจ API keys
-    api_checks = {
-        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
-        "PERPLEXITY_API_KEY": bool(os.getenv("PERPLEXITY_API_KEY")),
-        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
-        "AIRTABLE_PAT": bool(AIRTABLE_PAT),
-    }
-    results["checks"]["api_keys"] = api_checks
-
-    # ตรวจ LINE tokens
-    env = get_env_vars()
-    line_checks = {}
-    for bot_id, creds in env.items():
-        line_checks[bot_id] = {
-            "token": bool(creds.get("token")),
-            "secret": bool(creds.get("secret")),
-        }
-    results["checks"]["line_tokens"] = line_checks
-
-    # สรุป
-    all_api_ok = all(api_checks.values())
-    all_line_ok = all(c["token"] for c in line_checks.values())
-    results["healthy"] = all_api_ok and all_line_ok
-    results["missing"] = [k for k, v in api_checks.items() if not v]
-    results["missing"] += [f"LINE_{k}" for k, v in line_checks.items() if not v["token"]]
-
-    return results
-
-
 # ==================== Airtable Functions ====================
 
-async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 10) -> List[Dict]:
-    """ดึงประวัติบทสนทนาจาก Airtable"""
+async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 8) -> list:
     if not AIRTABLE_PAT:
         return []
     try:
-        table_id = "ConversationLog"
         formula = f"AND({{UserId}}='{user_id}', {{Bot}}='{bot_id}')"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{table_id}",
+                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/ConversationLog",
                 headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
                 params={
                     "filterByFormula": formula,
@@ -308,14 +322,12 @@ async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 10) 
 
 async def airtable_save_message(user_id: str, bot_id: str, display_name: str,
                                  message_in: str, message_out: str):
-    """บันทึกบทสนทนาลง Airtable"""
     if not AIRTABLE_PAT:
         return
     try:
-        table_id = "ConversationLog"
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{table_id}",
+                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/ConversationLog",
                 headers={
                     "Authorization": f"Bearer {AIRTABLE_PAT}",
                     "Content-Type": "application/json",
@@ -338,11 +350,9 @@ async def airtable_save_message(user_id: str, bot_id: str, display_name: str,
 
 
 async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
-    """ดึงข้อมูลผู้ใช้จาก Airtable (Farmers → FarmerRegistration → UnifiedProfiles)"""
     if not AIRTABLE_PAT:
         return None
     try:
-        # ค้นหาจากหลายตาราง โดย LINE_UserID
         search_tables = [
             ("Farmers", f"{{LINE_UserID}}='{user_id}'"),
             ("FarmerRegistration", f"{{LINE_UserID}}='{user_id}'"),
@@ -357,16 +367,15 @@ async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
                 if resp.status_code == 200:
                     records = resp.json().get("records", [])
                     if records:
-                        fields = records[0].get("fields", {})
-                        # Normalize field names for downstream use
+                        f = records[0].get("fields", {})
                         return {
-                            "name": fields.get("Name") or fields.get("FullName", ""),
-                            "phone": fields.get("Phone", ""),
-                            "crops": fields.get("FruitType", ""),
-                            "farmSize": fields.get("AreaRai") or fields.get("Area", ""),
-                            "location": fields.get("FarmAddress") or fields.get("District", ""),
-                            "notes": fields.get("Notes") or fields.get("FarmCondition", ""),
-                            "status": fields.get("Status", ""),
+                            "name": f.get("Name") or f.get("FullName", ""),
+                            "phone": f.get("Phone", ""),
+                            "crops": f.get("FruitType", ""),
+                            "farmSize": f.get("AreaRai") or f.get("Area", ""),
+                            "location": f.get("FarmAddress") or f.get("District", ""),
+                            "notes": f.get("Notes") or f.get("FarmCondition", ""),
+                            "status": f.get("Status", ""),
                         }
     except Exception as e:
         logger.warning(f"Airtable user profile error: {e}")
@@ -375,8 +384,7 @@ async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
 
 # ==================== AI Provider Functions ====================
 
-async def call_claude(messages: List[Dict], system: str, bot_id: str) -> Optional[str]:
-    """เรียก Claude API — สมองหลัก"""
+async def call_claude(messages: list, system: str) -> Optional[str]:
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
@@ -397,8 +405,7 @@ async def call_claude(messages: List[Dict], system: str, bot_id: str) -> Optiona
                 },
             )
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("content", [{}])[0].get("text", None)
+                return resp.json().get("content", [{}])[0].get("text", None)
             else:
                 logger.error(f"Claude API error {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
@@ -406,8 +413,7 @@ async def call_claude(messages: List[Dict], system: str, bot_id: str) -> Optiona
     return None
 
 
-async def call_gpt4o_vision(image_url: str, question: str) -> Optional[str]:
-    """เรียก GPT-4o Vision สำหรับวิเคราะห์รูปภาพ"""
+async def call_gpt4o_vision(img_data_url: str, question: str) -> Optional[str]:
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
         return None
@@ -422,7 +428,7 @@ async def call_gpt4o_vision(image_url: str, question: str) -> Optional[str]:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": question},
-                            {"type": "image_url", "image_url": {"url": image_url}},
+                            {"type": "image_url", "image_url": {"url": img_data_url}},
                         ],
                     }],
                     "max_tokens": 1024,
@@ -436,7 +442,6 @@ async def call_gpt4o_vision(image_url: str, question: str) -> Optional[str]:
 
 
 async def call_perplexity(query: str) -> Optional[str]:
-    """เรียก Perplexity สำหรับค้นข้อมูล real-time"""
     api_key = os.getenv("PERPLEXITY_API_KEY", "")
     if not api_key:
         return None
@@ -458,7 +463,6 @@ async def call_perplexity(query: str) -> Optional[str]:
 
 
 async def call_gemini_fast(message: str) -> Optional[str]:
-    """Gemini Flash สำหรับ fallback เร็ว"""
     api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         return None
@@ -470,26 +474,49 @@ async def call_gemini_fast(message: str) -> Optional[str]:
                 json={"contents": [{"parts": [{"text": message}]}]},
             )
             if resp.status_code == 200:
-                data = resp.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
+                return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         logger.error(f"Gemini error: {e}")
     return None
 
 
+# ==================== Smart Perplexity Search ====================
+
+def should_use_perplexity(message_text: str) -> bool:
+    """ตัดสินใจว่าควรค้นข้อมูล real-time หรือไม่
+
+    กฎ: ต้องเป็นคำถามเรื่องราคาตลาด/อากาศ/ข่าว จริงๆ
+    ห้ามค้นเมื่อเป็นคำสั่งภายใน (แจ้ง ส่ง ตรวจสอบ รายงาน)
+    """
+    # คำสั่งภายใน — ห้ามค้น Perplexity
+    internal_commands = [
+        "แจ้ง", "ส่ง", "ตรวจสอบ", "รายงาน", "ติดตาม", "มอบหมาย",
+        "ให้", "บอก", "เตือน", "ดู", "สรุป", "ทำ", "แก้", "อัพเดท",
+        "สถานะ", "ลงทะเบียน", "แบบฟอร์ม", "ทีม", "น้อง", "พร้อม",
+        "สวัสดี", "ขอบคุณ", "ดีจ้า", "ครับ", "ค่ะ",
+    ]
+
+    # ถ้าขึ้นต้นด้วยคำสั่งภายใน → ห้ามค้น
+    for cmd in internal_commands:
+        if message_text.startswith(cmd):
+            return False
+
+    # ต้องมีคำที่บ่งบอกว่าต้องการข้อมูลภายนอก + เรื่องผลไม้/เกษตร/อากาศ
+    search_triggers = ["ราคาตลาด", "ราคาวันนี้", "ราคาล่าสุด", "สภาพอากาศ", "พยากรณ์", "ข่าว"]
+    fruit_keywords = ["ส้ม", "ทุเรียน", "ลำไย", "ส้มโอ", "ผลไม้"]
+
+    # ต้องมี search trigger จริงๆ
+    has_trigger = any(t in message_text for t in search_triggers)
+
+    # หรือถามราคา + ผลไม้
+    has_price_fruit = ("ราคา" in message_text) and any(f in message_text for f in fruit_keywords)
+
+    return has_trigger or has_price_fruit
+
+
 # ==================== LINE Functions ====================
 
-async def line_get_content_url(bot_id: str, message_id: str) -> Optional[str]:
-    """ดึง URL เนื้อหา (รูป/วิดีโอ) จาก LINE"""
-    env = get_env_vars()
-    token = env.get(bot_id, {}).get("token", "")
-    if not token:
-        return None
-    return f"https://api-data.line.me/v2/bot/message/{message_id}/content"
-
-
 async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
-    """ดึงโปรไฟล์ผู้ใช้จาก LINE"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
     if not token:
@@ -508,19 +535,16 @@ async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
 
 
 async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""):
-    """ตอบกลับ LINE — ลอง Reply API ก่อน ถ้าล้มเหลวใช้ Push API แทน"""
+    """ตอบกลับ LINE — Reply API ก่อน ถ้าล้มเหลวใช้ Push API แทน"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
-    logger.info(f"[REPLY] bot={bot_id}, has_token={bool(token)}, reply_token={reply_token[:20] if reply_token else 'NONE'}...")
     if not token:
-        logger.warning(f"[REPLY] NO TOKEN for {bot_id} — cannot reply!")
+        logger.warning(f"[REPLY] NO TOKEN for {bot_id}")
         return
-    # ตัดข้อความไม่เกิน 5000 ตัวอักษร (LINE limit)
     if len(text) > 4900:
         text = text[:4900] + "..."
 
     reply_success = False
-    # 1. ลอง Reply API ก่อน (ฟรี ไม่เสียโควต้า)
     if reply_token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -529,15 +553,14 @@ async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={"replyToken": reply_token, "messages": [{"type": "text", "text": text}]},
                 )
-                logger.info(f"[REPLY] Reply API: {resp.status_code} {resp.text[:200]}")
                 if resp.status_code == 200:
                     reply_success = True
+                else:
+                    logger.warning(f"[REPLY] Reply API failed: {resp.status_code}")
         except Exception as e:
             logger.error(f"[REPLY] Reply API error: {e}")
 
-    # 2. ถ้า Reply ล้มเหลว ใช้ Push API แทน (เสียโควต้า แต่ดีกว่าไม่ตอบ)
     if not reply_success and user_id:
-        logger.warning(f"[REPLY] Reply failed, falling back to Push API for {user_id}")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
@@ -545,13 +568,12 @@ async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={"to": user_id, "messages": [{"type": "text", "text": text}]},
                 )
-                logger.info(f"[REPLY] Push API fallback: {resp.status_code} {resp.text[:200]}")
+                logger.info(f"[PUSH] Fallback: {resp.status_code}")
         except Exception as e:
-            logger.error(f"[REPLY] Push API error: {e}")
+            logger.error(f"[PUSH] Error: {e}")
 
 
 def verify_line_signature(body: str, secret: str, signature: str) -> bool:
-    """ยืนยัน LINE webhook signature"""
     try:
         computed = base64.b64encode(
             hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
@@ -562,7 +584,6 @@ def verify_line_signature(body: str, secret: str, signature: str) -> bool:
 
 
 def get_env_vars() -> Dict:
-    """ดึง LINE credentials — รองรับทั้งชื่อเก่า (server.js) และชื่อใหม่ (main.py)"""
     return {
         "phrae555": {
             "token": os.getenv("LINE_TOKEN_PHRAE555", "") or os.getenv("PHRAE555_CHANNEL_ACCESS_TOKEN", ""),
@@ -587,37 +608,43 @@ def get_env_vars() -> Dict:
     }
 
 
-# ==================== Main AI Brain ====================
+# ==================== AI Brain — สมองจริง ====================
 
 async def ai_brain(bot_id: str, user_id: str, display_name: str,
                    message_text: str, message_type: str = "text",
                    image_id: str = None) -> str:
-    """สมอง AI หลัก — Claude คิด แล้วเรียก AI อื่นตามจำเป็น"""
+    """สมอง AI ตัวจริง — รู้จักคน รู้จักองค์กร คิดเอง ทำเอง"""
 
     bot_config = BOTS_CONFIG.get(bot_id, {})
     system_prompt = bot_config.get("system_prompt", "ตอบภาษาไทย สุภาพ")
 
-    # 1. ดึงประวัติบทสนทนา + โปรไฟล์ผู้ใช้
+    # ===== 1. รู้จักคนก่อน — lookup Staff Registry =====
+    staff_info = STAFF_REGISTRY.get(user_id)
+    staff_context = ""
+    if staff_info:
+        staff_context = f"\n[ข้อมูลผู้พูด] ชื่อ: {staff_info['name']} | ตำแหน่ง: {staff_info['role']} | เรียกว่า: {staff_info['title']}"
+    else:
+        staff_context = f"\n[ข้อมูลผู้พูด] ชื่อ LINE: {display_name} | ตำแหน่ง: ลูกค้า/เกษตรกรภายนอก | เรียกว่า: คุณ{display_name}"
+
+    # ===== 2. ดึงประวัติบทสนทนา + โปรไฟล์จาก Airtable =====
     history, profile = await asyncio.gather(
         airtable_get_conversation(user_id, bot_id, limit=8),
         airtable_get_user_profile(user_id),
     )
 
-    # 2. สร้าง context เพิ่มเติม
     extra_context = ""
     if profile:
-        extra_context += f"\n[ข้อมูลผู้ใช้] ชื่อ: {profile.get('name', display_name)}"
+        extra_context += f"\n[ข้อมูลเกษตรกร] ชื่อ: {profile.get('name', display_name)}"
         for key in ['location', 'crops', 'farmSize', 'phone', 'notes']:
             if profile.get(key):
                 extra_context += f" | {key}: {profile[key]}"
 
-    # 3. วิเคราะห์รูปภาพ (ถ้ามี)
+    # ===== 3. วิเคราะห์รูปภาพ (GPT-4o Vision) =====
     image_analysis = ""
     if message_type == "image" and image_id:
         env = get_env_vars()
         token = env.get(bot_id, {}).get("token", "")
         if token:
-            # ดาวน์โหลดรูปจาก LINE แล้วส่งให้ GPT-4o
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     img_resp = await client.get(
@@ -627,33 +654,31 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
                     if img_resp.status_code == 200:
                         img_base64 = base64.b64encode(img_resp.content).decode()
                         img_data_url = f"data:image/jpeg;base64,{img_base64}"
-
-                        vision_prompt = "วิเคราะห์รูปนี้อย่างละเอียด ถ้าเป็นพืช/ผลไม้ ให้ระบุชนิด สุขภาพ โรค วิธีรักษา ถ้าเป็นพลอย ให้ประเมินสี ความใส คุณภาพ ตอบเป็นภาษาไทย"
+                        vision_prompt = "วิเคราะห์รูปนี้อย่างละเอียด ถ้าเป็นพืช/ผลไม้ ให้ระบุชนิด สุขภาพ โรค วิธีรักษา ถ้าเป็นพลอย/อัญมณี ให้ประเมินสี ความใส คุณภาพ ตอบเป็นภาษาไทย"
                         analysis = await call_gpt4o_vision(img_data_url, vision_prompt)
                         if analysis:
                             image_analysis = f"\n[วิเคราะห์รูปภาพจาก GPT-4o Vision]\n{analysis}"
             except Exception as e:
                 logger.error(f"Image analysis error: {e}")
 
-    # 4. ค้นข้อมูล real-time ถ้าจำเป็น (ราคาตลาด สภาพอากาศ)
+    # ===== 4. ค้นข้อมูล real-time (Perplexity) — เฉพาะเมื่อจำเป็นจริงๆ =====
     search_result = ""
-    search_keywords = ["ราคา", "ตลาด", "อากาศ", "ข่าว", "วันนี้", "ล่าสุด", "สภาพ"]
-    if any(kw in message_text for kw in search_keywords):
-        search_query = f"{message_text} จังหวัดแพร่ ประเทศไทย {datetime.now().strftime('%Y-%m-%d')}"
+    if should_use_perplexity(message_text):
+        search_query = f"ราคาผลไม้ {message_text} จังหวัดแพร่ ประเทศไทย {datetime.now().strftime('%Y-%m-%d')}"
         result = await call_perplexity(search_query)
         if result:
             search_result = f"\n[ข้อมูล real-time จาก Perplexity]\n{result[:500]}"
 
-    # 5. สร้าง system prompt เต็ม
-    full_system = system_prompt
+    # ===== 5. ประกอบ system prompt เต็ม =====
+    full_system = system_prompt + staff_context
     if extra_context:
-        full_system += f"\n\n{extra_context}"
+        full_system += extra_context
     if image_analysis:
-        full_system += f"\n\n{image_analysis}"
+        full_system += image_analysis
     if search_result:
-        full_system += f"\n\n{search_result}"
+        full_system += search_result
 
-    # 6. สร้าง messages array จากประวัติบทสนทนา
+    # ===== 6. สร้าง messages จากประวัติ =====
     messages = []
     for h in history:
         if h.get("UserMessage"):
@@ -661,7 +686,6 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
         if h.get("BotResponse"):
             messages.append({"role": "assistant", "content": h["BotResponse"]})
 
-    # เพิ่มข้อความปัจจุบัน
     current_msg = message_text
     if message_type == "image":
         current_msg = f"[ผู้ใช้ส่งรูปภาพมา]{' ' + message_text if message_text else ''}"
@@ -670,18 +694,16 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
 
     messages.append({"role": "user", "content": f"[{display_name}]: {current_msg}"})
 
-    # 7. เรียก Claude — สมองหลัก
-    response = await call_claude(messages, full_system, bot_id)
+    # ===== 7. Claude — สมองหลัก =====
+    response = await call_claude(messages, full_system)
 
-    # 8. Fallback cascade ถ้า Claude ล้มเหลว
+    # ===== 8. Fallback: Gemini Flash =====
     if not response:
         logger.warning(f"Claude failed for {bot_id}, trying Gemini...")
-        response = await call_gemini_fast(
-            f"{full_system}\n\nUser: {current_msg}\nAssistant:"
-        )
+        response = await call_gemini_fast(f"{full_system}\n\nUser: {current_msg}\nAssistant:")
 
     if not response:
-        response = f"ขออภัยค่ะ น้อง{bot_config.get('name', '')} ไม่สามารถตอบได้ในขณะนี้ กรุณาส่งข้อความมาอีกครั้งนะคะ"
+        response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
 
     return response
 
@@ -689,40 +711,34 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
 # ==================== Webhook Processing ====================
 
 async def process_webhook_background(bot_id: str, request_body: Dict):
-    """Background wrapper — เรียก process_webhook โดยไม่ต้องใช้ BackgroundTasks"""
     try:
         await process_webhook_core(bot_id, request_body)
     except Exception as e:
         logger.error(f"Background webhook error: {e}")
 
-async def process_webhook_core(bot_id: str, request_body: Dict):
-    """ประมวลผล LINE webhook — AI ตอบตรง"""
-    start_time = time.time()
 
+async def process_webhook_core(bot_id: str, request_body: Dict):
+    start_time = time.time()
     events = request_body.get("events", [])
     if not events:
         return
 
     for event in events:
         event_type = event.get("type", "")
-
-        # รองรับเฉพาะ message events
         if event_type != "message":
             if event_type == "follow":
                 logger.info(f"[{bot_id}] New follower: {event.get('source', {}).get('userId', 'unknown')}")
             continue
 
-        # ป้องกันข้อความซ้ำ (LINE retry)
         msg_id_check = event.get("message", {}).get("id", "")
         if msg_id_check and await is_duplicate(f"{bot_id}:{msg_id_check}"):
-            logger.warning(f"[DEDUP] Skipping duplicate message {msg_id_check} for {bot_id}")
+            logger.warning(f"[DEDUP] Skipping duplicate {msg_id_check}")
             continue
 
         reply_token = event.get("replyToken", "")
         source = event.get("source", {})
         user_id = source.get("userId", "unknown")
         source_type = source.get("type", "user")
-        group_id = source.get("groupId", "")
 
         message = event.get("message", {})
         msg_type = message.get("type", "text")
@@ -734,49 +750,36 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
         if source_type == "group":
             trigger_words = [bot_name, "น้อง", "ai", "AI", "เอไอ", "บอท"]
             if not any(w.lower() in msg_text.lower() for w in trigger_words if w):
-                continue  # เงียบ ไม่ตอบเมื่อไม่ถูกเรียก
+                continue
 
-        # ดึง display name
         profile = await line_get_user_profile(bot_id, user_id)
         display_name = profile.get("displayName", "ท่าน") if profile else "ท่าน"
 
-        # เรียกสมอง AI
         try:
             ai_response = await ai_brain(
-                bot_id=bot_id,
-                user_id=user_id,
-                display_name=display_name,
-                message_text=msg_text,
-                message_type=msg_type,
+                bot_id=bot_id, user_id=user_id, display_name=display_name,
+                message_text=msg_text, message_type=msg_type,
                 image_id=msg_id if msg_type == "image" else None,
             )
         except Exception as e:
             logger.error(f"AI Brain error: {e}")
-            ai_response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
-            # ส่งแจ้งเตือน CEO ทันที
+            ai_response = "ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
             asyncio.ensure_future(send_error_alert(bot_id, "AI_BRAIN_ERROR", str(e)))
 
-        # ตอบกลับ LINE (Reply API ก่อน → Push API fallback)
         await line_reply(bot_id, reply_token, ai_response, user_id=user_id)
 
-        # บันทึกลง Airtable (non-blocking)
+        # บันทึกผลเข้าส่วนกลาง (ทำเสร็จแล้วค่อยรายงาน)
         asyncio.ensure_future(airtable_save_message(
             user_id, bot_id, display_name,
             msg_text if msg_type == "text" else f"[{msg_type}]",
             ai_response,
         ))
 
-        # Log to monitor
         elapsed = (time.time() - start_time) * 1000
         asyncio.ensure_future(monitor.log_message(
-            bot_id=bot_id,
-            bot_name=bot_name,
-            sender=display_name,
-            message_in=msg_text[:200],
-            message_out=ai_response[:200],
-            msg_type=msg_type,
-            ai_used="claude",
-            status="success",
+            bot_id=bot_id, bot_name=bot_name, sender=display_name,
+            message_in=msg_text[:200], message_out=ai_response[:200],
+            msg_type=msg_type, ai_used="claude", status="success",
             response_ms=round(elapsed),
         ))
 
@@ -785,14 +788,12 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
 
 @app.post("/webhook/{bot_id}")
 async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTasks):
-    """LINE webhook endpoint"""
     if bot_id not in BOTS_CONFIG:
         raise HTTPException(status_code=400, detail="Invalid bot_id")
 
     body = await request.body()
     body_str = body.decode("utf-8")
 
-    # Verify signature
     signature = request.headers.get("x-line-signature", "")
     env = get_env_vars()
     secret = env.get(bot_id, {}).get("secret", "")
@@ -801,8 +802,6 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     request_body = json.loads(body_str)
-    # ตอบ LINE 200 ทันที แล้วประมวลผลใน background
-    # ป้องกัน LINE retry ซ้ำ (LINE timeout ~1 วินาที)
     background_tasks.add_task(process_webhook_background, bot_id, request_body)
     return {"status": "ok"}
 
@@ -811,29 +810,55 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
 async def health():
     return {
         "status": "healthy",
-        "version": "2.0.1-multi-ai",
-        "brain": "Claude API",
+        "version": "2.1.0-ai-real",
+        "brain": "Claude API + Business Knowledge + Staff Registry",
         "vision": "GPT-4o",
-        "search": "Perplexity",
+        "search": "Perplexity (smart trigger)",
         "fallback": "Gemini Flash",
         "database": "Airtable",
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
+        "staff_count": len(set(s["staffId"] for s in STAFF_REGISTRY.values())),
+        "fruits": ["ส้มเขียวหวาน", "ส้มโอ", "ทุเรียน", "ลำไย"],
     }
 
 
 @app.get("/diagnostic")
 async def diagnostic():
-    """ตรวจสอบระบบทั้งหมด — API keys, LINE tokens, สถานะ"""
-    return await self_diagnostic()
+    results = {"timestamp": datetime.now().isoformat(), "version": "2.1.0", "checks": {}}
+    api_checks = {
+        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
+        "PERPLEXITY_API_KEY": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
+        "AIRTABLE_PAT": bool(AIRTABLE_PAT),
+        "CEO_LINE_USERID": bool(os.getenv("CEO_LINE_USERID")),
+    }
+    results["checks"]["api_keys"] = api_checks
+    env = get_env_vars()
+    line_checks = {}
+    for bot_id, creds in env.items():
+        line_checks[bot_id] = {"token": bool(creds.get("token")), "secret": bool(creds.get("secret"))}
+    results["checks"]["line_tokens"] = line_checks
+    all_api_ok = all(api_checks.values())
+    all_line_ok = all(c["token"] for c in line_checks.values())
+    results["healthy"] = all_api_ok and all_line_ok
+    results["missing"] = [k for k, v in api_checks.items() if not v]
+    results["missing"] += [f"LINE_{k}" for k, v in line_checks.items() if not v["token"]]
+    return results
 
 
 @app.get("/monitor", response_class=HTMLResponse)
 async def monitor_dashboard():
     logs = await monitor.get_logs(limit=50)
     summary = await monitor.get_summary()
-    html = f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>AI Agent Monitor v2.0</title>
+    log_html = ""
+    for l in logs:
+        status_class = l.get("status", "")
+        log_html += f'<div class="log {status_class}"><span class="tag">{l.get("bot_name","")}</span> <b>{l.get("sender","")}</b>: {str(l.get("message_in",""))[:100]}<br/><span class="time">{l.get("timestamp","")} | {l.get("ai_used","")} | {l.get("response_ms",0)}ms</span></div>'
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>AI Monitor v2.1</title>
 <style>
 body{{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#eee;margin:0;padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -844,21 +869,21 @@ h1{{text-align:center;color:#00d4ff;font-size:2em}}
 .stat .val{{font-size:2em;font-weight:bold;margin-top:8px}}
 .log{{background:#0f3460;padding:10px;margin:6px 0;border-radius:6px;border-left:3px solid #00d4ff}}
 .log.success{{border-color:#00ff88}}
-.log.failed{{border-color:#ff4444}}
+.log.error{{border-color:#ff4444}}
 .tag{{background:#00d4ff;color:#000;padding:2px 6px;border-radius:3px;font-size:.8em}}
 .time{{color:#888;font-size:.8em}}
 </style></head>
 <body><div class="container">
-<h1>AI Agent Monitor v2.0 — Claude Brain</h1>
+<h1>AI Agent Monitor v2.1 — AI ตัวจริง</h1>
 <div class="stats">
 <div class="stat"><h3>Total Today</h3><div class="val">{summary.get('total',0)}</div></div>
 <div class="stat"><h3>Success</h3><div class="val">{summary.get('success',0)}</div></div>
 <div class="stat"><h3>Rate</h3><div class="val">{summary.get('success_rate',0):.0f}%</div></div>
+<div class="stat"><h3>Fruits</h3><div class="val">4</div></div>
 </div>
 <h2>Recent Messages</h2>
-{"".join([f'<div class="log {l.get("status","")}"><span class="tag">{l.get("bot_name","")}</span> <b>{l.get("sender","")}</b>: {l.get("message_in","")[:100]}<br/><span class="time">{l.get("timestamp","")} | {l.get("ai_used","")} | {l.get("response_ms",0)}ms</span></div>' for l in logs])}
+{log_html}
 </div></body></html>"""
-    return html
 
 
 @app.get("/monitor/api")
@@ -866,8 +891,6 @@ async def monitor_api(bot_id: str = None, limit: int = 50):
     logs = await monitor.get_logs(limit=limit, bot_id=bot_id)
     return {"count": len(logs), "logs": logs}
 
-
-# ==================== Main ====================
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=False)
