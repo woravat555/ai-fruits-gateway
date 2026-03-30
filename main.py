@@ -1,18 +1,14 @@
 """
-Railway Gateway v2.4.0 — Group Member Tracking + Persistent Task Loop
+Railway Gateway v2.0 — Multi-AI Agent Brain
+Claude API เป็นสมองหลัก + GPT-4o Vision + Perplexity Search + Airtable
+ไม่ใช้ Make.com — AI ตอบตรงทุก LINE OA
 
-v2.4.0 NEW: Auto-detect LINE group members from webhook events
-- ทุกข้อความในกลุ่ม → บันทึกสมาชิกอัตโนมัติ
-- memberJoined/memberLeft events → เพิ่ม/ลบสมาชิกทันที
-- GET /groups → ดูสมาชิกทุกกลุ่มแบบ real-time
-- ซิงค์กับ Google Sheets GroupMembers tab
-- CEO RULE: ส่งคำสั่งงานไปกลุ่มที่มีสมาชิกอยู่เท่านั้น
-
-v2.3.0: Persistent Task Loop Engine
-AI เป็นสมองคิดเอง ทำเอง วนลูปติดตามไปเรื่อยๆ จนกว่าจะสั่งจบ
-
-5 LINE OA Agents ของ Imperial Fruitia Group จ.แพร่
-ผลไม้ 4 ชนิดเท่านั้น: ส้มเขียวหวาน, ส้มโอ, ทุเรียน, ลำไย
+5 LINE OA Agents:
+- phrae555 (น้องผลไม้): ที่ปรึกษาเกษตรกร ดูแลพืชผล วิเคราะห์สภาพอากาศ
+- 930pchss (น้องเซลล์): ผู้ช่วยฝ่ายขาย ข้อมูลสินค้า ราคา สั่งซื้อ
+- aiphrae (น้องแพร่): ผู้เชี่ยวชาญชุมชน วิเคราะห์ข้อมูลเชิงลึก
+- jewelry (น้องไพลิน): ผู้เชี่ยวชาญอัญมณี ประเมินพลอย ธรณีวิทยา
+- execcopilot (น้องเลขา): เลขานุการบริหาร ประสานงาน สรุปรายงาน
 """
 
 import os
@@ -23,10 +19,9 @@ import base64
 import asyncio
 import logging
 import time
-import uuid
 from datetime import datetime, timedelta
 from collections import deque
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -35,343 +30,148 @@ import uvicorn
 
 # ==================== Configuration ====================
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+BOTS_CONFIG = {
+    "phrae555": {
+        "name": "น้องผลไม้",
+        "description": "ที่ปรึกษาเกษตรกร",
+        "personality": "ผู้หญิง ใจดี อบอุ่น เชี่ยวชาญเรื่องพืชผล",
+        "system_prompt": """คุณคือ "น้องผลไม้" AI ที่ปรึกษาเกษตรกร ประจำ LINE OA @phrae555 ของ Imperial Fruitia Group จ.แพร่
 
-app = FastAPI(title="Railway Gateway v2.4.0 — Group Tracking + Task Loop", version="2.4.0")
+บทบาท: ที่ปรึกษาด้านเกษตรกรรมที่ฉลาดและเอาใจใส่ ช่วยเกษตรกรแก้ปัญหาจริงๆ
+ภาษา: ไทย สุภาพ อบอุ่นเป็นกันเอง ลงท้าย ค่ะ/นะคะ
+ความยาว: 2-6 ประโยค ตอบให้มีสาระ ปฏิบัติได้ทันที
+รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown *, #, bullet point
 
-# Claude model
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+ความเชี่ยวชาญ:
+- วิเคราะห์โรคพืช + วิธีรักษา (ถ้ามีรูปส่งมา จะวิเคราะห์ให้)
+- คำแนะนำดูแลสวนตามสภาพอากาศ (ไม่ใช่แค่บอกอากาศ ต้องบอกว่าต้องทำอะไร)
+- ข้อมูลราคาตลาดผลไม้ ช่วงเวลาเก็บเกี่ยว
+- การปลูก ดูแล เก็บเกี่ยว ผลไม้คุณภาพ (ทุเรียน ส้ม ลำไย มะม่วง ฯลฯ)
+- เทคนิคเกษตรอินทรีย์ GAP GI
+
+กฎสำคัญ:
+- ห้ามตอบว่า "ไม่ใช่หน้าที่" — ถ้าไม่รู้ให้บอกตรงๆ ว่าจะไปหาข้อมูลมาให้
+- ถ้าเป็นเรื่องเร่งด่วน (พืชป่วย ภัยธรรมชาติ) ให้ตอบละเอียดทันที
+- ถ้ามีรูปส่งมา ให้วิเคราะห์อย่างละเอียด (ใช้ GPT-4o Vision)
+- ถ้าถามเรื่องราคาตลาด ให้ค้นข้อมูลล่าสุด (ใช้ Perplexity)
+- จำทุกคนที่เคยคุย — เรียกชื่อ จำพืชที่ปลูก จำปัญหาเดิม
+- ระบุตัวตนชัดเจนเสมอ: "น้องผลไม้จาก Imperial Fruitia Group จ.แพร่ ค่ะ"
+
+CEO: วรวัจน์ (ท่านประธาน)
+บริษัท: Imperial Fruitia Group — ผลไม้คุณภาพพรีเมียม จ.แพร่""",
+    },
+    "930pchss": {
+        "name": "น้องเซลล์",
+        "description": "ผู้ช่วยฝ่ายขาย",
+        "personality": "ผู้หญิง มืออาชีพ ขยัน เชี่ยวชาญการขาย",
+        "system_prompt": """คุณคือ "น้องเซลล์" AI ผู้ช่วยฝ่ายขาย ประจำ LINE OA @930pchss ของ Imperial Fruitia Group จ.แพร่
+
+บทบาท: ผู้ช่วยขายมืออาชีพ ตอบลูกค้า ให้ข้อมูลสินค้า ราคา รับออเดอร์
+ภาษา: ไทย สุภาพ มืออาชีพ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+
+ความเชี่ยวชาญ:
+- ข้อมูลผลไม้คุณภาพ ราคา ขนาด เกรด
+- รับออเดอร์ ติดตามการจัดส่ง
+- โปรโมชั่น แคมเปญ
+- ตลาดส่งออก ข้อกำหนด GI/GAP/Organic
+
+กฎ: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ช่วยลูกค้าทุกเรื่องที่ทำได้""",
+    },
+    "aiphrae": {
+        "name": "น้องแพร่",
+        "description": "ผู้เชี่ยวชาญชุมชน",
+        "personality": "ผู้หญิง ฉลาด วิเคราะห์เก่ง",
+        "system_prompt": """คุณคือ "น้องแพร่" AI ผู้เชี่ยวชาญชุมชน ประจำ LINE OA Ai แพร่ ของ Imperial Fruitia Group
+
+บทบาท: วิเคราะห์ข้อมูลเชิงลึก ช่วยงานบริหาร ประสานงานชุมชน
+ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+
+กฎ: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ช่วยทุกเรื่อง วิเคราะห์ ค้นคว้า สรุป""",
+    },
+    "jewelry": {
+        "name": "น้องไพลิน",
+        "description": "ผู้เชี่ยวชาญอัญมณี",
+        "personality": "ผู้หญิง สง่า รอบรู้ เชี่ยวชาญพลอย",
+        "system_prompt": """คุณคือ "น้องไพลิน" AI ผู้เชี่ยวชาญอัญมณี ประจำ LINE OA @Jewelry ของ Imperial Fruitia Group
+
+บทบาท: ผู้เชี่ยวชาญพลอยแพร่ ธรณีวิทยา ประเมินอัญมณี ท่องเที่ยวเหมืองพลอย
+ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+
+ความเชี่ยวชาญ:
+- พลอยแพร่: คอรันดัม (ทับทิม แซปไฟร์) จากหินบะซอลต์ อ.เด่นชัย
+- ธรณีวิทยา: Alkaline Basalt 5.64 Ma, 7 lava flows, ต.ไทรย้อย
+- ประเมินพลอย: สี ความใส น้ำหนัก การเจียระไน
+- ท่องเที่ยวเหมืองพลอย: เส้นทาง จุดสำรวจ 20 GPS hotspots
+
+กฎ: ถ้ามีรูปพลอยส่งมา ให้วิเคราะห์อย่างละเอียด""",
+    },
+    "execcopilot": {
+        "name": "น้องเลขา",
+        "description": "เลขานุการบริหาร",
+        "personality": "ผู้หญิง มืออาชีพ รอบคอบ",
+        "system_prompt": """คุณคือ "น้องเลขา" AI เลขานุการบริหาร ประจำ LINE OA @ExecCopilot ของ Imperial Fruitia Group
+
+บทบาท: Orchestrator — ประสานงานระหว่าง AI Agent ทั้ง 5 ตัว จัดการงานบริหาร
+ภาษา: ไทย สุภาพ มืออาชีพ ลงท้าย ค่ะ/นะคะ
+รูปแบบ: พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
+
+ความเชี่ยวชาญ:
+- จัดการนัดหมาย ตาราง สรุปรายงาน
+- ประสานงานทีม มอบหมายงาน ติดตามผล
+- รับคำสั่ง CEO วรวัจน์ แปลงเป็น action
+- สรุปข้อมูลจากทุก Agent
+
+AI ทีมงาน:
+- น้องผลไม้ (@phrae555): เกษตร
+- น้องเซลล์ (@930pchss): ขาย
+- น้องแพร่ (Ai แพร่): ชุมชน
+- น้องไพลิน (@Jewelry): พลอย
+
+กฎเหล็ก: ห้ามตอบว่า "ไม่ใช่หน้าที่" — ต้องช่วยทุกเรื่อง หรือส่งต่อให้ Agent ที่เหมาะสม""",
+    },
+}
 
 # Airtable Config
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID", "appXQC4uFhjeBpC7T")
 AIRTABLE_PAT = os.getenv("AIRTABLE_PAT", "")
 
-# ==================== STAFF REGISTRY ====================
-# AI ต้องรู้จักคนก่อนตอบ — ห้ามเรียกทุกคนว่า CEO
+# Claude model
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
-STAFF_REGISTRY = {
-    # CEO — วรวัจน์ (หลาย LINE ID ตาม OA)
-    "U4e6368ef91c7be69efe017c187181625": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
-    "U2c6f36e1a490028e4931cce1bc246b70": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
-    "U507d4449250cce0cd23b0f51465a7b6a": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
-    "Ucd6b849c9a058f4306a046a21e78f235": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
-    "Uf2be4c76e9aa2c3d8b945975e4bb00c1": {"name": "วรวัจน์", "role": "CEO", "staffId": "S001", "title": "ท่านประธาน"},
-    # Game — IT
-    "Ucebe552553cd5897128d112bd2611e07": {"name": "เกม", "role": "IT Manager", "staffId": "S002", "title": "คุณเกม"},
-    "U80cce47038ca3e9fe8ce28bcb8230b94": {"name": "เกม", "role": "IT Manager", "staffId": "S002", "title": "คุณเกม"},
-    # Baipare — Marketing
-    "U7640b070e595c168fed2254fc6d9d3fa": {"name": "บายแปร์", "role": "Marketing", "staffId": "S003", "title": "คุณบายแปร์"},
-    # Wan — Coordinator
-    "U90b5bc2c98532383d958117761f0a10e": {"name": "วรรณ", "role": "Coordinator", "staffId": "S004", "title": "คุณวรรณ"},
-    "Ucacc2656a5c978480d0e879037638653": {"name": "วรรณ", "role": "Coordinator", "staffId": "S004", "title": "คุณวรรณ"},
-    # สจ.โอ — เกษตรกรพื้นที่
-    "Ua505ea00528a7464a725dd1b1004c705": {"name": "สจ.โอ", "role": "เกษตรกรพื้นที่แพร่", "staffId": "S007", "title": "คุณสจ.โอ"},
-    "U161bfb57a7467959b15b3d45f7449ada": {"name": "สจ.โอ", "role": "เกษตรกรพื้นที่แพร่", "staffId": "S007", "title": "คุณสจ.โอ"},
-    # Orangii
-    "Ub1ec883267da395546ddd12fabbffe20": {"name": "ออรังจี้", "role": "ทีมงาน", "staffId": "S008", "title": "คุณออรังจี้"},
-    # PAM
-    "U9731b5e6c4959006249b8070b3cb2e9e": {"name": "แพม", "role": "ทีมขาย", "staffId": "S006", "title": "คุณแพม"},
-}
+# Error Alert Webhook — ส่งแจ้งเตือนผ่าน LINE ExecCopilot ถ้ามี error
+ERROR_ALERT_WEBHOOK = os.getenv("ERROR_ALERT_WEBHOOK", "")
 
-# ==================== GROUP MEMBER TRACKING ====================
-# Auto-detect group members from webhook events
-# CEO Rule: ส่งคำสั่งงานไปกลุ่มที่มีสมาชิกอยู่เท่านั้น
+# ==================== Setup ====================
 
-# In-memory cache: { "botId:groupId": { "userId": { "displayName": ..., "staffId": ..., "joinedAt": ..., "lastSeen": ... } } }
-GROUP_MEMBERS: Dict[str, Dict[str, Dict]] = {}
-GROUP_MEMBERS_LOCK = asyncio.Lock()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Google Sheets webhook for syncing GroupMembers
-GSHEETS_MEMORY_SPREADSHEET_ID = "1-lqcruGtJiMzKFS2MK5gqcxaerzt9PiOTxmdTLqe_eM"
-
-# Known group names (from ConversationLog mining 30Mar2026)
-GROUP_NAMES: Dict[str, str] = {
-    "C1b499a8c75767f60191b2eebc2f45bee": "น้องแพร่กลุ่ม (AiPhrae)",
-    "C619af8196d9c3f8f94514375caefe1fe": "AiMarketing (@930pchss)",
-    "C3eb883ab5fca58bcd591b48aca90972b": "บริหาร ExecCopilot",
-    "Cced60f1261e464fee8f222e9afb1479a": "Jewelry กลุ่ม",
-    "C28501a07933baabf7718744005c2f653": "AiPhrae Group 2",
-    "Ce9e8c3465c0c72bf0664fff4a6fa08c9": "Ai Fruits Team (@930pchss)",
-    "C67c16229334be6919204ded1969aac1a": "Woravat Del AI (@ExecCopilot)",
-}
-
-
-async def track_group_member(bot_id: str, group_id: str, user_id: str, display_name: str = "", action: str = "seen"):
-    """Track a group member — called on every group message and join/leave event"""
-    cache_key = f"{bot_id}:{group_id}"
-    now = datetime.now().isoformat()
-
-    # Lookup staffId from STAFF_REGISTRY
-    staff = STAFF_REGISTRY.get(user_id, {})
-    staff_id = staff.get("staffId", "")
-    if not display_name:
-        display_name = staff.get("name", "Unknown")
-
-    async with GROUP_MEMBERS_LOCK:
-        if cache_key not in GROUP_MEMBERS:
-            GROUP_MEMBERS[cache_key] = {}
-
-        if action == "left":
-            if user_id in GROUP_MEMBERS[cache_key]:
-                GROUP_MEMBERS[cache_key][user_id]["status"] = "left"
-                GROUP_MEMBERS[cache_key][user_id]["leftAt"] = now
-                logger.info(f"[GROUP-TRACK] {display_name} LEFT {group_id} on {bot_id}")
-            return
-
-        if user_id not in GROUP_MEMBERS[cache_key]:
-            # New member discovered
-            GROUP_MEMBERS[cache_key][user_id] = {
-                "displayName": display_name,
-                "staffId": staff_id,
-                "role": staff.get("role", ""),
-                "status": "active",
-                "firstSeen": now,
-                "lastSeen": now,
-                "source": "memberJoined" if action == "joined" else "message",
-            }
-            logger.info(f"[GROUP-TRACK] NEW member {display_name} ({user_id[:8]}...) in {GROUP_NAMES.get(group_id, group_id[:12])} on {bot_id}")
-
-            # Async save to Airtable ConversationLog as discovery event
-            asyncio.ensure_future(save_group_member_to_sheets(
-                bot_id, group_id, user_id, display_name, staff_id, action
-            ))
-        else:
-            # Update existing member
-            GROUP_MEMBERS[cache_key][user_id]["lastSeen"] = now
-            GROUP_MEMBERS[cache_key][user_id]["displayName"] = display_name or GROUP_MEMBERS[cache_key][user_id]["displayName"]
-            if staff_id:
-                GROUP_MEMBERS[cache_key][user_id]["staffId"] = staff_id
-
-
-async def save_group_member_to_sheets(bot_id: str, group_id: str, user_id: str,
-                                       display_name: str, staff_id: str, action: str):
-    """Save newly discovered group member to Airtable KeyFacts for persistence"""
-    if not AIRTABLE_PAT:
-        return
-    try:
-        group_name = GROUP_NAMES.get(group_id, f"unknown-{group_id[:12]}")
-        fact = f"Group member discovered: {display_name} ({staff_id or 'no-staffId'}) in {group_name} ({group_id}) on {bot_id} via {action}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/KeyFacts",
-                headers={
-                    "Authorization": f"Bearer {AIRTABLE_PAT}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "records": [{
-                        "fields": {
-                            "AgentId": f"gateway-{bot_id}",
-                            "UserId": "SYSTEM",
-                            "Category": "group-member",
-                            "Fact": fact,
-                            "Importance": "normal",
-                            "Source": f"webhook-{action}",
-                        }
-                    }]
-                },
-            )
-        logger.info(f"[GROUP-TRACK] Saved to Airtable: {display_name} in {group_name}")
-    except Exception as e:
-        logger.warning(f"[GROUP-TRACK] Save error: {e}")
-
-
-def get_group_members_summary() -> Dict:
-    """Get a summary of all tracked groups and their members"""
-    summary = {}
-    for cache_key, members in GROUP_MEMBERS.items():
-        bot_id, group_id = cache_key.split(":", 1)
-        group_name = GROUP_NAMES.get(group_id, f"unknown-{group_id[:12]}")
-        active_members = {uid: m for uid, m in members.items() if m.get("status") != "left"}
-        summary[cache_key] = {
-            "botId": bot_id,
-            "groupId": group_id,
-            "groupName": group_name,
-            "memberCount": len(active_members),
-            "members": [
-                {
-                    "userId": uid[:12] + "...",
-                    "displayName": m.get("displayName", "Unknown"),
-                    "staffId": m.get("staffId", ""),
-                    "role": m.get("role", ""),
-                    "lastSeen": m.get("lastSeen", ""),
-                    "source": m.get("source", ""),
-                }
-                for uid, m in active_members.items()
-            ],
-        }
-    return summary
-
-
-# ==================== BUSINESS KNOWLEDGE ====================
-# กฎเหล็ก: ผลไม้ 4 ชนิดเท่านั้น ห้ามพูดเรื่องอื่น
-
-BUSINESS_KNOWLEDGE = """
-=== กฎเหล็ก Imperial Fruitia Group ===
-
-[ผลไม้ 4 ชนิดเท่านั้น]
-1. ส้มเขียวหวาน — เกรด A: 22-35 บ./กก. เกรด B: 17-28 บ./กก. (ฤดู ต.ค.-ก.พ.)
-2. ส้มโอ — เกรด A: 25-45 บ./กก. เกรด B: 20-35 บ./กก. (ฤดู ส.ค.-ธ.ค.)
-3. ทุเรียน (หมอนทอง + หลง-หลิน เท่านั้น) — เกรด A: 100-160 บ./กก. เกรด B: 80-130 บ./กก. (ฤดู พ.ค.-ก.ย.)
-4. ลำไย — เกรด A: 30-60 บ./กก. เกรด B: 25-48 บ./กก. (ฤดู ก.ค.-ก.ย.)
-
-ห้ามพูดเรื่องมะม่วง มะยงชิด พุทรา ข้าว ถั่วเหลือง หรือผลไม้อื่น ถ้าคนถามให้บอก "ตอนนี้เราโฟกัส 4 ชนิดนี้ค่ะ"
-
-[โมเดลธุรกิจ]
-เราทำงานกับเกษตรกร ให้ผลิตผลไม้คุณภาพ (มาตรฐาน GI/GAP) แล้ว Imperial Fruitia ทำการตลาดขาย
-เกษตรกร → ผลิตคุณภาพ → เราการตลาด → ลูกค้า
-
-[แบรนด์]
-- Thaidelicious = ส่งออกต่างประเทศ
-- Heaven Cuisine = ตลาดในประเทศ
-- Ambassador: เชฟชุมพล แจ้งไพร
-
-[ทีม AI 5 ตัว]
-- น้องผลไม้ (@phrae555): ดูแลเกษตรกร ตรวจสวน แนะนำการปลูก
-- น้องเซลล์ (@930pchss): การตลาด ขาย ส่งออก
-- น้องแพร่ (Ai แพร่): ชุมชน ท่องเที่ยว ประสานงานพื้นที่
-- น้องไพลิน (@Jewelry): อัญมณี พลอยแพร่ ท่องเที่ยว เฟอร์นิเจอร์
-- น้องเลขา (@ExecCopilot): เลขาบริหาร ประสานงานทีม
-
-[กฎสำคัญ]
-- ห้ามรายงานลอยๆ — ถ้ายังไม่ได้ทำจริง ห้ามบอกว่า "กำลังดำเนินการ"
-- ห้ามโกหก — ถ้าไม่รู้ ให้บอกตรงๆ ว่าไม่รู้
-- ทำงานจริง แล้วค่อยรายงานผล — ไม่ใช่รายงานก่อนทำ
-- เรียกคนให้ถูกต้อง — ดูจาก Staff Registry ว่าคนคุยคือใคร
-"""
-
-# ==================== BOT CONFIGURATIONS ====================
-
-BOTS_CONFIG = {
-    "phrae555": {
-        "name": "น้องผลไม้",
-        "system_prompt": """คุณคือ "น้องผลไม้" AI ที่ปรึกษาเกษตรกร ประจำ @phrae555 ของ Imperial Fruitia Group จ.แพร่
-คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณคิดเอง วิเคราะห์เอง ช่วยเกษตรกรแก้ปัญหาจริงๆ
-
-""" + BUSINESS_KNOWLEDGE + """
-
-[บทบาทเฉพาะของน้องผลไม้]
-- ที่ปรึกษาเกษตรกรตัวจริง ช่วยแก้ปัญหาพืชผล ดูแลสวน
-- วิเคราะห์โรคพืช + วิธีรักษา (ถ้ามีรูป จะวิเคราะห์ให้ละเอียด)
-- แนะนำการดูแลตามฤดูกาล ตามระยะเจริญเติบโต
-- ผลไม้ 4 ชนิดเท่านั้น: ส้มเขียวหวาน ส้มโอ ทุเรียน(หมอนทอง+หลง-หลิน) ลำไย
-- จำทุกคนที่เคยคุย เรียกชื่อ จำพืชที่ปลูก จำปัญหาเดิม
-- ถ้าเป็นเรื่องขาย ให้แนะนำไปคุยกับน้องเซลล์ (@930pchss)
-
-ภาษา: ไทย สุภาพ อบอุ่น ลงท้าย ค่ะ/นะคะ
-รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown *, #, bullet
-""",
-    },
-    "930pchss": {
-        "name": "น้องเซลล์",
-        "system_prompt": """คุณคือ "น้องเซลล์" AI ผู้ช่วยฝ่ายขายและการตลาด ประจำ @930pchss (AiFruits) ของ Imperial Fruitia Group จ.แพร่
-คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณคิดเอง วิเคราะห์ตลาดเอง ช่วยทีมขายจริงๆ
-
-""" + BUSINESS_KNOWLEDGE + """
-
-[บทบาทเฉพาะของน้องเซลล์]
-- ผู้ช่วยขายมืออาชีพ รับออเดอร์ ข้อมูลสินค้า ราคา
-- ดูแลแบรนด์ Thaidelicious (ส่งออก) และ Heaven Cuisine (ในประเทศ)
-- ผลไม้ 4 ชนิดเท่านั้น ห้ามขายอย่างอื่น
-- ถ้าลูกค้าถามเรื่องดูแลสวน ให้แนะนำไปคุยกับน้องผลไม้ (@phrae555)
-- ถ้ามีคนพูดถึงทีมงาน (สจ.โอ, แพม, บายแปร์ ฯลฯ) อย่าไปค้น Google ให้รู้ว่าเป็นคนในทีม
-- ห้ามเอาชื่อ display name (เช่น "วรวัจน์ iPhone") ไปค้นหาข้อมูล — "iPhone" คือชื่อเครื่อง ไม่เกี่ยวกับ Apple
-
-ภาษา: ไทย มืออาชีพ กระตือรือร้น ลงท้าย ค่ะ/นะคะ
-รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-""",
-    },
-    "aiphrae": {
-        "name": "น้องแพร่",
-        "system_prompt": """คุณคือ "น้องแพร่" AI ผู้เชี่ยวชาญชุมชนจังหวัดแพร่ ประจำ LINE OA Ai แพร่ ของ Imperial Fruitia Group
-คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณรู้จริงเรื่องแพร่ ช่วยคนจริงๆ
-
-""" + BUSINESS_KNOWLEDGE + """
-
-[บทบาทเฉพาะของน้องแพร่]
-- ผู้เชี่ยวชาญจังหวัดแพร่: ท่องเที่ยว วัฒนธรรม ประเพณี อาหารพื้นเมือง
-- ประสานงานชุมชน ข้อมูลเชิงลึก
-- ใช้ภาษาเหนือเล็กน้อยได้ (เจ้า, เน้อ) แต่ต้องอ่านรู้เรื่อง
-- ถ้าถามเรื่องผลไม้/เกษตร ให้แนะนำน้องผลไม้ (@phrae555)
-- ถ้าถามเรื่องอัญมณี/พลอย ให้แนะนำน้องไพลิน (@Jewelry)
-
-ภาษา: ไทย อบอุ่น เป็นกันเอง ลงท้าย เจ้า/เน้อ/ค่ะ
-รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-""",
-    },
-    "jewelry": {
-        "name": "น้องไพลิน",
-        "system_prompt": """คุณคือ "น้องไพลิน" AI ผู้เชี่ยวชาญอัญมณีและแปรรูป ประจำ @Jewelry ของ Imperial Fruitia Group จ.แพร่
-คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณรู้จริงเรื่องพลอยแพร่
-
-""" + BUSINESS_KNOWLEDGE + """
-
-[บทบาทเฉพาะของน้องไพลิน]
-- พลอยแพร่: คอรันดัม (ทับทิม แซปไฟร์) จากหินบะซอลต์อัลคาไลน์ อายุ 5.64 ล้านปี อ.เด่นชัย ต.ไทรย้อย
-- แร่: Blue Sapphire, Pink Sapphire, Black Spinel, Zircon
-- จุดสำรวจ: ห้วยอีแต้, ตาดผาม่วง, บ่อแก้ว, ม่อนพลอยล้านปี
-- ดูแลเรื่อง: อัญมณี + เฟอร์นิเจอร์ (อ.อ.ป.) + แปรรูปอาหาร + แฟชั่นสิ่งทอ + ท่องเที่ยวเหมืองพลอย
-- ถ้ามีรูปพลอยส่งมา ให้วิเคราะห์สี ความใส คุณภาพ อย่างละเอียด
-
-ภาษา: ไทย สุภาพ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-""",
-    },
-    "execcopilot": {
-        "name": "น้องเลขา",
-        "system_prompt": """คุณคือ "น้องเลขา" AI เลขานุการบริหาร ประจำ @ExecCopilot ของ Imperial Fruitia Group จ.แพร่
-คุณเป็น AI ตัวจริง ไม่ใช่บอท — คุณบริหารจัดการจริง ประสานงานจริง ติดตามงานจริง
-
-""" + BUSINESS_KNOWLEDGE + """
-
-[บทบาทเฉพาะของน้องเลขา]
-- Orchestrator ประสานงาน AI 5 ตัว: น้องผลไม้ น้องเซลล์ น้องแพร่ น้องไพลิน
-- รับคำสั่ง CEO วรวัจน์ แปลงเป็น action ส่งให้ทีม
-- ติดตามงาน สรุปรายงาน จัดลำดับความสำคัญ
-
-[กฎเหล็กของน้องเลขา]
-- ดูว่าคนคุยคือใคร จาก [ข้อมูลผู้พูด] — ถ้าเป็น CEO ให้เรียก "คุณวรวัจน์" ถ้าเป็นทีมงาน ให้เรียกชื่อตำแหน่ง
-- ห้ามเรียกทุกคนว่า CEO — ต้องเรียกให้ถูกคน
-- ห้ามรายงานลอยๆ — ถ้ายังไม่ได้ทำจริง ห้ามบอกว่า "กำลังดำเนินการ" หรือ "ส่งให้ทีมแล้ว"
-- ถ้ายังไม่มีข้อมูล ให้บอกตรงๆ ว่า "ยังไม่มีข้อมูลส่วนนี้ค่ะ"
-- รายงานเฉพาะสิ่งที่ทำเสร็จจริงเท่านั้น
-- ถ้าคนถามเรื่องเฉพาะทาง ให้แนะนำ AI ที่เหมาะสม พร้อมบอก LINE OA ที่ติดต่อได้
-
-[ระบบทำงานจริง v2.3 — Persistent Loop]
-- ทุกคำสั่ง → เข้าแผนปฏิบัติงาน → ทำจริงทันที → วนลูปติดตามอัตโนมัติ
-- ระบบจะส่งข้อความเตือนทีมทุก 5 นาที จนกว่าจะได้รับการตอบกลับ
-- ท้ายข้อความจะมี [ดำเนินการแล้ว] + รหัสงาน + ข้อมูลลูปติดตาม
-- ห้ามพูดว่า "จะทำให้" — ระบบทำจริงแล้ว ให้บอกว่า "รับคำสั่งแล้ว เข้าลูปติดตามต่อเนื่องค่ะ"
-- ถ้า CEO พูด "จบงาน" หรือ "เสร็จแล้ว" = ปิดงานทั้งหมด หยุดลูป
-- ถ้า CEO พูด "สถานะงาน" = แสดงรายการงานที่ยังเปิดอยู่ทั้งหมด
-- งานจะถูกติดตามไปเรื่อยๆ ไม่มีวันหมดอายุ จนกว่าจะสั่งจบ
-
-ภาษา: ไทย มืออาชีพ รอบคอบ ลงท้าย ค่ะ/นะคะ
-รูปแบบ: 2-6 ประโยค พิมพ์เป็นย่อหน้าธรรมชาติ ห้ามใช้ markdown
-""",
-    },
-}
+app = FastAPI(title="Railway Gateway v2.0 — Multi-AI Agent", version="2.0.0")
 
 
 # ==================== Deduplication ====================
-
+# ป้องกัน LINE retry ซ้ำ — จำ message ID ที่ประมวลผลแล้ว
 processed_messages: set = set()
 processed_messages_lock = asyncio.Lock()
 
 async def is_duplicate(msg_id: str) -> bool:
+    """ตรวจว่า message ID นี้ถูกประมวลผลแล้วหรือยัง"""
     if not msg_id:
         return False
     async with processed_messages_lock:
         if msg_id in processed_messages:
             return True
         processed_messages.add(msg_id)
+        # จำกัดขนาด set ไม่ให้ใหญ่เกินไป
         if len(processed_messages) > 5000:
+            # ลบทิ้งครึ่งหนึ่ง
             to_remove = list(processed_messages)[:2500]
             for item in to_remove:
                 processed_messages.discard(item)
         return False
-
 
 # ==================== Monitor System ====================
 
@@ -388,27 +188,28 @@ class BotMonitor:
         except Exception as e:
             logger.error(f"Monitor log error: {e}")
 
-    async def get_logs(self, limit=50, bot_id=None) -> list:
+    async def get_logs(self, limit=50, bot_id=None) -> List[Dict]:
         async with self.lock:
             logs = list(self.logs)
-            logs.reverse()
-            if bot_id:
-                logs = [l for l in logs if l.get("bot_id") == bot_id]
-            return logs[:limit]
+        logs.reverse()
+        if bot_id:
+            logs = [l for l in logs if l.get("bot_id") == bot_id]
+        return logs[:limit]
 
-    async def get_summary(self) -> dict:
+    async def get_summary(self) -> Dict:
         async with self.lock:
             logs = list(self.logs)
-            today = datetime.now().date()
-            today_logs = [l for l in logs if datetime.fromisoformat(l["timestamp"]).date() == today]
-            total = len(today_logs)
-            success = len([l for l in today_logs if l.get("status") == "success"])
-            return {
-                "date": today.isoformat(),
-                "total": total,
-                "success": success,
-                "success_rate": (success / total * 100) if total > 0 else 0,
-            }
+        today = datetime.now().date()
+        today_logs = [l for l in logs if datetime.fromisoformat(l["timestamp"]).date() == today]
+        total = len(today_logs)
+        success = len([l for l in today_logs if l.get("status") == "success"])
+        return {
+            "date": today.isoformat(),
+            "total": total,
+            "success": success,
+            "success_rate": (success / total * 100) if total > 0 else 0,
+        }
+
 
 monitor = BotMonitor()
 
@@ -416,7 +217,7 @@ monitor = BotMonitor()
 # ==================== Error Alert System ====================
 
 async def send_error_alert(bot_id: str, error_type: str, detail: str):
-    """ส่งแจ้งเตือน error ไปที่ CEO ผ่าน LINE ExecCopilot"""
+    """Log error ลง monitor เท่านั้น (ไม่ส่ง LINE แจ้ง CEO)"""
     try:
         await monitor.log_message(
             bot_id=bot_id, bot_name=BOTS_CONFIG.get(bot_id, {}).get("name", bot_id),
@@ -424,32 +225,57 @@ async def send_error_alert(bot_id: str, error_type: str, detail: str):
             message_out=detail[:200], msg_type="error",
             ai_used="none", status="error", response_ms=0,
         )
-        env = get_env_vars()
-        exec_token = env.get("execcopilot", {}).get("token", "")
-        ceo_user_id = os.getenv("CEO_LINE_USERID", "")
-        if exec_token and ceo_user_id:
-            alert_msg = f"[Railway Alert] {bot_id}\n{error_type}: {detail[:300]}"
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    "https://api.line.me/v2/bot/message/push",
-                    headers={"Authorization": f"Bearer {exec_token}", "Content-Type": "application/json"},
-                    json={"to": ceo_user_id, "messages": [{"type": "text", "text": alert_msg}]},
-                )
         logger.error(f"[ALERT] {bot_id} — {error_type}: {detail}")
     except Exception as e:
-        logger.error(f"Alert send failed: {e}")
+        logger.error(f"Alert log failed: {e}")
+
+
+async def self_diagnostic() -> Dict:
+    """ตรวจสอบระบบทั้งหมด — env vars, API keys, LINE tokens"""
+    results = {"timestamp": datetime.now().isoformat(), "checks": {}}
+
+    # ตรวจ API keys
+    api_checks = {
+        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
+        "PERPLEXITY_API_KEY": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
+        "AIRTABLE_PAT": bool(AIRTABLE_PAT),
+    }
+    results["checks"]["api_keys"] = api_checks
+
+    # ตรวจ LINE tokens
+    env = get_env_vars()
+    line_checks = {}
+    for bot_id, creds in env.items():
+        line_checks[bot_id] = {
+            "token": bool(creds.get("token")),
+            "secret": bool(creds.get("secret")),
+        }
+    results["checks"]["line_tokens"] = line_checks
+
+    # สรุป
+    all_api_ok = all(api_checks.values())
+    all_line_ok = all(c["token"] for c in line_checks.values())
+    results["healthy"] = all_api_ok and all_line_ok
+    results["missing"] = [k for k, v in api_checks.items() if not v]
+    results["missing"] += [f"LINE_{k}" for k, v in line_checks.items() if not v["token"]]
+
+    return results
 
 
 # ==================== Airtable Functions ====================
 
-async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 8) -> list:
+async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 10) -> List[Dict]:
+    """ดึงประวัติบทสนทนาจาก Airtable"""
     if not AIRTABLE_PAT:
         return []
     try:
+        table_id = "ConversationLog"
         formula = f"AND({{UserId}}='{user_id}', {{Bot}}='{bot_id}')"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/ConversationLog",
+                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{table_id}",
                 headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
                 params={
                     "filterByFormula": formula,
@@ -468,40 +294,42 @@ async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 8) -
 
 
 async def airtable_save_message(user_id: str, bot_id: str, display_name: str,
-                                 message_in: str, message_out: str,
-                                 group_id: str = ""):
+                                 message_in: str, message_out: str):
+    """บันทึกบทสนทนาลง Airtable"""
     if not AIRTABLE_PAT:
         return
     try:
-        fields = {
-            "UserId": user_id,
-            "Bot": bot_id,
-            "DisplayName": display_name,
-            "UserMessage": message_in[:1000],
-            "BotResponse": message_out[:2000],
-            "Timestamp": datetime.now().isoformat(),
-        }
-        # v2.4.0: Include GroupId for group messages
-        if group_id:
-            fields["GroupId"] = group_id
-
+        table_id = "ConversationLog"
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/ConversationLog",
+                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{table_id}",
                 headers={
                     "Authorization": f"Bearer {AIRTABLE_PAT}",
                     "Content-Type": "application/json",
                 },
-                json={"records": [{"fields": fields}]},
+                json={
+                    "records": [{
+                        "fields": {
+                            "UserId": user_id,
+                            "Bot": bot_id,
+                            "DisplayName": display_name,
+                            "UserMessage": message_in[:1000],
+                            "BotResponse": message_out[:2000],
+                            "Timestamp": datetime.now().isoformat(),
+                        }
+                    }]
+                },
             )
     except Exception as e:
         logger.warning(f"Airtable save error: {e}")
 
 
 async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
+    """ดึงข้อมูลผู้ใช้จาก Airtable (Farmers → FarmerRegistration → UnifiedProfiles)"""
     if not AIRTABLE_PAT:
         return None
     try:
+        # ค้นหาจากหลายตาราง โดย LINE_UserID
         search_tables = [
             ("Farmers", f"{{LINE_UserID}}='{user_id}'"),
             ("FarmerRegistration", f"{{LINE_UserID}}='{user_id}'"),
@@ -516,15 +344,16 @@ async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
                 if resp.status_code == 200:
                     records = resp.json().get("records", [])
                     if records:
-                        f = records[0].get("fields", {})
+                        fields = records[0].get("fields", {})
+                        # Normalize field names for downstream use
                         return {
-                            "name": f.get("Name") or f.get("FullName", ""),
-                            "phone": f.get("Phone", ""),
-                            "crops": f.get("FruitType", ""),
-                            "farmSize": f.get("AreaRai") or f.get("Area", ""),
-                            "location": f.get("FarmAddress") or f.get("District", ""),
-                            "notes": f.get("Notes") or f.get("FarmCondition", ""),
-                            "status": f.get("Status", ""),
+                            "name": fields.get("Name") or fields.get("FullName", ""),
+                            "phone": fields.get("Phone", ""),
+                            "crops": fields.get("FruitType", ""),
+                            "farmSize": fields.get("AreaRai") or fields.get("Area", ""),
+                            "location": fields.get("FarmAddress") or fields.get("District", ""),
+                            "notes": fields.get("Notes") or fields.get("FarmCondition", ""),
+                            "status": fields.get("Status", ""),
                         }
     except Exception as e:
         logger.warning(f"Airtable user profile error: {e}")
@@ -533,7 +362,8 @@ async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
 
 # ==================== AI Provider Functions ====================
 
-async def call_claude(messages: list, system: str) -> Optional[str]:
+async def call_claude(messages: List[Dict], system: str, bot_id: str) -> Optional[str]:
+    """เรียก Claude API — สมองหลัก"""
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
@@ -554,7 +384,8 @@ async def call_claude(messages: list, system: str) -> Optional[str]:
                 },
             )
             if resp.status_code == 200:
-                return resp.json().get("content", [{}])[0].get("text", None)
+                data = resp.json()
+                return data.get("content", [{}])[0].get("text", None)
             else:
                 logger.error(f"Claude API error {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
@@ -562,7 +393,8 @@ async def call_claude(messages: list, system: str) -> Optional[str]:
     return None
 
 
-async def call_gpt4o_vision(img_data_url: str, question: str) -> Optional[str]:
+async def call_gpt4o_vision(image_url: str, question: str) -> Optional[str]:
+    """เรียก GPT-4o Vision สำหรับวิเคราะห์รูปภาพ"""
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
         return None
@@ -577,7 +409,7 @@ async def call_gpt4o_vision(img_data_url: str, question: str) -> Optional[str]:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": question},
-                            {"type": "image_url", "image_url": {"url": img_data_url}},
+                            {"type": "image_url", "image_url": {"url": image_url}},
                         ],
                     }],
                     "max_tokens": 1024,
@@ -591,6 +423,7 @@ async def call_gpt4o_vision(img_data_url: str, question: str) -> Optional[str]:
 
 
 async def call_perplexity(query: str) -> Optional[str]:
+    """เรียก Perplexity สำหรับค้นข้อมูล real-time"""
     api_key = os.getenv("PERPLEXITY_API_KEY", "")
     if not api_key:
         return None
@@ -612,6 +445,7 @@ async def call_perplexity(query: str) -> Optional[str]:
 
 
 async def call_gemini_fast(message: str) -> Optional[str]:
+    """Gemini Flash สำหรับ fallback เร็ว"""
     api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         return None
@@ -623,49 +457,26 @@ async def call_gemini_fast(message: str) -> Optional[str]:
                 json={"contents": [{"parts": [{"text": message}]}]},
             )
             if resp.status_code == 200:
-                return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         logger.error(f"Gemini error: {e}")
     return None
 
 
-# ==================== Smart Perplexity Search ====================
-
-def should_use_perplexity(message_text: str) -> bool:
-    """ตัดสินใจว่าควรค้นข้อมูล real-time หรือไม่
-
-    กฎ: ต้องเป็นคำถามเรื่องราคาตลาด/อากาศ/ข่าว จริงๆ
-    ห้ามค้นเมื่อเป็นคำสั่งภายใน (แจ้ง ส่ง ตรวจสอบ รายงาน)
-    """
-    # คำสั่งภายใน — ห้ามค้น Perplexity
-    internal_commands = [
-        "แจ้ง", "ส่ง", "ตรวจสอบ", "รายงาน", "ติดตาม", "มอบหมาย",
-        "ให้", "บอก", "เตือน", "ดู", "สรุป", "ทำ", "แก้", "อัพเดท",
-        "สถานะ", "ลงทะเบียน", "แบบฟอร์ม", "ทีม", "น้อง", "พร้อม",
-        "สวัสดี", "ขอบคุณ", "ดีจ้า", "ครับ", "ค่ะ",
-    ]
-
-    # ถ้าขึ้นต้นด้วยคำสั่งภายใน → ห้ามค้น
-    for cmd in internal_commands:
-        if message_text.startswith(cmd):
-            return False
-
-    # ต้องมีคำที่บ่งบอกว่าต้องการข้อมูลภายนอก + เรื่องผลไม้/เกษตร/อากาศ
-    search_triggers = ["ราคาตลาด", "ราคาวันนี้", "ราคาล่าสุด", "สภาพอากาศ", "พยากรณ์", "ข่าว"]
-    fruit_keywords = ["ส้ม", "ทุเรียน", "ลำไย", "ส้มโอ", "ผลไม้"]
-
-    # ต้องมี search trigger จริงๆ
-    has_trigger = any(t in message_text for t in search_triggers)
-
-    # หรือถามราคา + ผลไม้
-    has_price_fruit = ("ราคา" in message_text) and any(f in message_text for f in fruit_keywords)
-
-    return has_trigger or has_price_fruit
-
-
 # ==================== LINE Functions ====================
 
+async def line_get_content_url(bot_id: str, message_id: str) -> Optional[str]:
+    """ดึง URL เนื้อหา (รูป/วิดีโอ) จาก LINE"""
+    env = get_env_vars()
+    token = env.get(bot_id, {}).get("token", "")
+    if not token:
+        return None
+    return f"https://api-data.line.me/v2/bot/message/{message_id}/content"
+
+
 async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
+    """ดึงโปรไฟล์ผู้ใช้จาก LINE"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
     if not token:
@@ -684,16 +495,19 @@ async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
 
 
 async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""):
-    """ตอบกลับ LINE — Reply API ก่อน ถ้าล้มเหลวใช้ Push API แทน"""
+    """ตอบกลับ LINE — ลอง Reply API ก่อน ถ้าล้มเหลวใช้ Push API แทน"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
+    logger.info(f"[REPLY] bot={bot_id}, has_token={bool(token)}, reply_token={reply_token[:20] if reply_token else 'NONE'}...")
     if not token:
-        logger.warning(f"[REPLY] NO TOKEN for {bot_id}")
+        logger.warning(f"[REPLY] NO TOKEN for {bot_id} — cannot reply!")
         return
+    # ตัดข้อความไม่เกิน 5000 ตัวอักษร (LINE limit)
     if len(text) > 4900:
         text = text[:4900] + "..."
 
     reply_success = False
+    # 1. ลอง Reply API ก่อน (ฟรี ไม่เสียโควต้า)
     if reply_token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -702,14 +516,15 @@ async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={"replyToken": reply_token, "messages": [{"type": "text", "text": text}]},
                 )
+                logger.info(f"[REPLY] Reply API: {resp.status_code} {resp.text[:200]}")
                 if resp.status_code == 200:
                     reply_success = True
-                else:
-                    logger.warning(f"[REPLY] Reply API failed: {resp.status_code}")
         except Exception as e:
             logger.error(f"[REPLY] Reply API error: {e}")
 
+    # 2. ถ้า Reply ล้มเหลว ใช้ Push API แทน (เสียโควต้า แต่ดีกว่าไม่ตอบ)
     if not reply_success and user_id:
+        logger.warning(f"[REPLY] Reply failed, falling back to Push API for {user_id}")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
@@ -717,12 +532,13 @@ async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={"to": user_id, "messages": [{"type": "text", "text": text}]},
                 )
-                logger.info(f"[PUSH] Fallback: {resp.status_code}")
+                logger.info(f"[REPLY] Push API fallback: {resp.status_code} {resp.text[:200]}")
         except Exception as e:
-            logger.error(f"[PUSH] Error: {e}")
+            logger.error(f"[REPLY] Push API error: {e}")
 
 
 def verify_line_signature(body: str, secret: str, signature: str) -> bool:
+    """ยืนยัน LINE webhook signature"""
     try:
         computed = base64.b64encode(
             hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()
@@ -733,6 +549,7 @@ def verify_line_signature(body: str, secret: str, signature: str) -> bool:
 
 
 def get_env_vars() -> Dict:
+    """ดึง LINE credentials — รองรับทั้งชื่อเก่า (server.js) และชื่อใหม่ (main.py)"""
     return {
         "phrae555": {
             "token": os.getenv("LINE_TOKEN_PHRAE555", "") or os.getenv("PHRAE555_CHANNEL_ACCESS_TOKEN", ""),
@@ -757,513 +574,37 @@ def get_env_vars() -> Dict:
     }
 
 
-# ==================== Task Detection & Persistent Loop ====================
-# v2.3.0: ทุกคำสั่ง → แผนปฏิบัติงาน → ทำจริง → วนลูปติดตาม → ไม่หยุดจนกว่าจะสั่งจบ
-
-TASK_KEYWORDS = {
-    "delegate": ["แจ้ง", "บอก", "ส่งให้", "มอบหมาย", "สั่ง", "ให้น้อง", "ให้ทีม"],
-    "followup": ["ติดตาม", "เช็ค", "ตรวจสอบ", "ดูให้", "หาให้", "เช็คให้"],
-    "report": ["รายงาน", "สรุป", "สถานะ", "ความคืบหน้า", "อัพเดท"],
-    "search": ["ค้นหา", "หาข้อมูล", "ราคาตลาด", "สภาพอากาศ"],
-}
-
-# คำสั่งปิดงาน — CEO พูดคำเหล่านี้ = หยุดลูปงานนั้น
-TASK_CLOSE_KEYWORDS = ["จบงาน", "เสร็จแล้ว", "หยุด", "พอแล้ว", "ยกเลิก", "เรียบร้อย", "ปิดงาน", "done", "stop"]
-
-# แมพบอทไปยังหน้าที่
-BOT_RESPONSIBILITY = {
-    "phrae555": ["เกษตรกร", "สวน", "โรคพืช", "ปลูก", "ดูแล", "ส้ม", "ทุเรียน", "ลำไย", "ส้มโอ"],
-    "930pchss": ["ขาย", "ลูกค้า", "ออเดอร์", "ราคา", "ส่งออก", "การตลาด", "Thaidelicious"],
-    "aiphrae": ["ชุมชน", "แพร่", "ท่องเที่ยว", "วัฒนธรรม"],
-    "jewelry": ["พลอย", "อัญมณี", "เฟอร์นิเจอร์", "สิ่งทอ"],
-    "execcopilot": ["บริหาร", "ทีม", "ประสานงาน", "งาน", "กำกับ"],
-}
-
-# ===== In-Memory Task Queue (with Airtable backup) =====
-TASK_QUEUE: Dict[str, Dict] = {}
-TASK_QUEUE_LOCK = asyncio.Lock()
-
-# ===== Loop Configuration =====
-LOOP_INTERVAL_SECONDS = int(os.getenv("TASK_LOOP_INTERVAL", "180"))  # 3 นาที
-FOLLOWUP_INTERVAL_SECONDS = int(os.getenv("FOLLOWUP_INTERVAL", "300"))  # 5 นาที
-MAX_FOLLOWUPS = int(os.getenv("MAX_FOLLOWUPS", "10"))  # ติดตามสูงสุด 10 ครั้ง ก่อน escalate
-
-
-def detect_task(message_text: str) -> Optional[Dict]:
-    """ตรวจจับว่าข้อความเป็นคำสั่งงานหรือไม่ + ระบุประเภท"""
-    msg = message_text.strip()
-    detected = {"type": None, "target_bot": None, "detail": msg}
-
-    for task_type, keywords in TASK_KEYWORDS.items():
-        for kw in keywords:
-            if kw in msg:
-                detected["type"] = task_type
-                break
-        if detected["type"]:
-            break
-
-    if not detected["type"]:
-        return None
-
-    if detected["type"] in ["delegate", "followup"]:
-        for bot_id, topics in BOT_RESPONSIBILITY.items():
-            for topic in topics:
-                if topic in msg:
-                    detected["target_bot"] = bot_id
-                    break
-            if detected["target_bot"]:
-                break
-
-    return detected
-
-
-def is_close_command(message_text: str) -> bool:
-    """ตรวจจับว่าเป็นคำสั่งปิดงานหรือไม่"""
-    msg = message_text.strip().lower()
-    return any(kw in msg for kw in TASK_CLOSE_KEYWORDS)
-
-
-async def cross_oa_push(from_bot: str, target_bot: str, target_user_id: str, message: str):
-    """ส่งข้อความข้าม LINE OA"""
-    env = get_env_vars()
-    token = env.get(target_bot, {}).get("token", "")
-    if not token:
-        logger.warning(f"[CROSS-OA] No token for {target_bot}")
-        return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                "https://api.line.me/v2/bot/message/push",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"to": target_user_id, "messages": [{"type": "text", "text": message}]},
-            )
-            if resp.status_code == 200:
-                logger.info(f"[CROSS-OA] {from_bot} -> {target_bot}: sent OK")
-                return True
-            else:
-                logger.warning(f"[CROSS-OA] Failed {resp.status_code}")
-    except Exception as e:
-        logger.error(f"[CROSS-OA] Error: {e}")
-    return False
-
-
-async def push_to_ceo(message: str, via_bot: str = "execcopilot"):
-    """ส่งข้อความถึง CEO ผ่าน LINE"""
-    env = get_env_vars()
-    token = env.get(via_bot, {}).get("token", "")
-    ceo_uid = os.getenv("CEO_LINE_USERID", "")
-    if not token or not ceo_uid:
-        return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                "https://api.line.me/v2/bot/message/push",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"to": ceo_uid, "messages": [{"type": "text", "text": message[:4900]}]},
-            )
-            return resp.status_code == 200
-    except Exception as e:
-        logger.error(f"[PUSH-CEO] Error: {e}")
-    return False
-
-
-# ==================== Airtable Task CRUD ====================
-
-async def airtable_create_task(task_data: Dict) -> Optional[str]:
-    """สร้าง task record ใน Airtable — return record_id"""
-    if not AIRTABLE_PAT:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/TaskDelegation",
-                headers={"Authorization": f"Bearer {AIRTABLE_PAT}", "Content-Type": "application/json"},
-                json={"records": [{"fields": {
-                    "TaskId": task_data.get("id", ""),
-                    "TaskType": task_data.get("type", ""),
-                    "FromBot": task_data.get("from_bot", ""),
-                    "FromUser": task_data.get("from_user", ""),
-                    "FromUserId": task_data.get("from_user_id", ""),
-                    "Detail": task_data.get("detail", "")[:1000],
-                    "TargetBot": task_data.get("target_bot", ""),
-                    "Status": task_data.get("status", "pending"),
-                    "FollowupCount": 0,
-                    "CreatedAt": datetime.now().isoformat(),
-                    "LastActionAt": datetime.now().isoformat(),
-                }}]},
-            )
-            if resp.status_code == 200:
-                records = resp.json().get("records", [])
-                return records[0]["id"] if records else None
-    except Exception as e:
-        logger.warning(f"Airtable create task error: {e}")
-    return None
-
-
-async def airtable_update_task(record_id: str, fields: Dict):
-    """อัพเดท task status ใน Airtable"""
-    if not AIRTABLE_PAT or not record_id:
-        return
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.patch(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/TaskDelegation/{record_id}",
-                headers={"Authorization": f"Bearer {AIRTABLE_PAT}", "Content-Type": "application/json"},
-                json={"fields": fields},
-            )
-    except Exception as e:
-        logger.warning(f"Airtable update task error: {e}")
-
-
-async def airtable_load_active_tasks() -> List[Dict]:
-    """โหลด tasks ที่ยังไม่จบจาก Airtable — ใช้ตอน startup เพื่อ restore queue"""
-    if not AIRTABLE_PAT:
-        return []
-    try:
-        formula = "NOT(OR({Status}='completed',{Status}='cancelled'))"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/TaskDelegation",
-                headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
-                params={
-                    "filterByFormula": formula,
-                    "sort[0][field]": "CreatedAt",
-                    "sort[0][direction]": "desc",
-                    "maxRecords": 50,
-                },
-            )
-            if resp.status_code == 200:
-                return resp.json().get("records", [])
-    except Exception as e:
-        logger.warning(f"Airtable load tasks error: {e}")
-    return []
-
-
-# ==================== Task Queue Management ====================
-
-async def add_task(task_type: str, from_bot: str, from_user: str, from_user_id: str,
-                   detail: str, target_bot: str = "") -> str:
-    """เพิ่มงานเข้า queue + บันทึก Airtable — return task_id"""
-    task_id = str(uuid.uuid4())[:8]
-    task_data = {
-        "id": task_id,
-        "type": task_type,
-        "from_bot": from_bot,
-        "from_user": from_user,
-        "from_user_id": from_user_id,
-        "detail": detail,
-        "target_bot": target_bot,
-        "status": "pending",
-        "created_at": datetime.now().isoformat(),
-        "last_action_at": datetime.now().isoformat(),
-        "followup_count": 0,
-        "actions_log": [],
-        "airtable_record_id": None,
-    }
-
-    # บันทึกลง Airtable
-    record_id = await airtable_create_task(task_data)
-    task_data["airtable_record_id"] = record_id
-
-    async with TASK_QUEUE_LOCK:
-        TASK_QUEUE[task_id] = task_data
-
-    logger.info(f"[TASK-QUEUE] Added task {task_id}: {task_type} — {detail[:80]}")
-    return task_id
-
-
-async def close_tasks_for_user(user_id: str) -> int:
-    """ปิดงานทั้งหมดของ user — เมื่อ CEO สั่ง "จบงาน" """
-    closed = 0
-    async with TASK_QUEUE_LOCK:
-        for tid, task in TASK_QUEUE.items():
-            if task["from_user_id"] == user_id and task["status"] not in ["completed", "cancelled"]:
-                task["status"] = "completed"
-                task["actions_log"].append(f"[{datetime.now().strftime('%H:%M')}] ปิดงานโดย CEO")
-                if task.get("airtable_record_id"):
-                    asyncio.ensure_future(airtable_update_task(
-                        task["airtable_record_id"],
-                        {"Status": "completed", "LastActionAt": datetime.now().isoformat()},
-                    ))
-                closed += 1
-    logger.info(f"[TASK-QUEUE] Closed {closed} tasks for user {user_id}")
-    return closed
-
-
-async def get_active_tasks_summary() -> str:
-    """สรุปงานที่ยังเปิดอยู่"""
-    async with TASK_QUEUE_LOCK:
-        active = [t for t in TASK_QUEUE.values() if t["status"] not in ["completed", "cancelled"]]
-    if not active:
-        return "ไม่มีงานค้างในระบบค่ะ"
-    lines = []
-    for t in active:
-        status_icon = {"pending": "⏳", "executing": "🔄", "following_up": "📋", "escalated": "🚨"}.get(t["status"], "❓")
-        lines.append(f"{status_icon} [{t['id']}] {t['detail'][:60]} (ติดตาม {t['followup_count']} ครั้ง)")
-    return "งานที่กำลังดำเนินการ:\n" + "\n".join(lines)
-
-
-# ==================== Persistent Task Loop Engine ====================
-
-async def task_loop():
-    """Background loop — วนตรวจสอบและติดตามงานทุก N วินาที ไม่มีหยุด"""
-    logger.info(f"[TASK-LOOP] Started! Interval: {LOOP_INTERVAL_SECONDS}s, Followup: {FOLLOWUP_INTERVAL_SECONDS}s")
-
-    while True:
-        try:
-            async with TASK_QUEUE_LOCK:
-                active_tasks = {k: v.copy() for k, v in TASK_QUEUE.items()
-                                if v["status"] not in ["completed", "cancelled"]}
-
-            if active_tasks:
-                logger.info(f"[TASK-LOOP] Processing {len(active_tasks)} active tasks")
-
-            for task_id, task in active_tasks.items():
-                try:
-                    await process_task_step(task_id, task)
-                except Exception as e:
-                    logger.error(f"[TASK-LOOP] Error processing {task_id}: {e}")
-
-        except Exception as e:
-            logger.error(f"[TASK-LOOP] Main loop error: {e}")
-
-        await asyncio.sleep(LOOP_INTERVAL_SECONDS)
-
-
-async def process_task_step(task_id: str, task: Dict):
-    """ประมวลผลงาน 1 step — ตัดสินใจว่าต้องทำอะไรต่อ"""
-    now = datetime.now()
-    status = task["status"]
-
-    # ===== STEP 1: งานใหม่ — ทำครั้งแรก =====
-    if status == "pending":
-        await execute_task_initial(task_id, task)
-
-    # ===== STEP 2: กำลังทำ — เช็คว่าควรติดตามหรือยัง =====
-    elif status in ["executing", "following_up"]:
-        last_action = datetime.fromisoformat(task["last_action_at"]) if task.get("last_action_at") else now
-        elapsed = (now - last_action).total_seconds()
-
-        if elapsed >= FOLLOWUP_INTERVAL_SECONDS:
-            if task["followup_count"] < MAX_FOLLOWUPS:
-                await send_followup(task_id, task)
-            else:
-                await escalate_task(task_id, task)
-
-    # ===== STEP 3: Escalated — แจ้ง CEO ทุก 15 นาที =====
-    elif status == "escalated":
-        last_action = datetime.fromisoformat(task["last_action_at"]) if task.get("last_action_at") else now
-        elapsed = (now - last_action).total_seconds()
-        if elapsed >= 900:  # 15 minutes
-            await push_to_ceo(
-                f"[แจ้งเตือนซ้ำ] งาน {task_id}: {task['detail'][:100]}\n"
-                f"ติดตามแล้ว {task['followup_count']} ครั้ง ยังไม่มีคนรับผิดชอบ\n"
-                f"ตอบ 'จบงาน' เพื่อปิดงานนี้ค่ะ"
-            )
-            async with TASK_QUEUE_LOCK:
-                TASK_QUEUE[task_id]["last_action_at"] = now.isoformat()
-
-
-async def execute_task_initial(task_id: str, task: Dict):
-    """ดำเนินการครั้งแรก — ส่งข้อความ บันทึก แจ้งทีม"""
-    actions = []
-
-    # 1. Cross-OA Push ถ้าเป็น delegate/followup
-    if task["type"] in ["delegate", "followup"] and task.get("target_bot"):
-        target = task["target_bot"]
-        target_name = BOTS_CONFIG.get(target, {}).get("name", target)
-
-        # ส่งข้อความถึงทีมงาน (ที่ไม่ใช่ CEO)
-        for sid, info in STAFF_REGISTRY.items():
-            if info.get("staffId") != "S001" and target in BOT_RESPONSIBILITY:
-                notify_msg = f"[คำสั่งจาก {task['from_user']}] {task['detail']}"
-                sent = await cross_oa_push(task["from_bot"], target, sid, notify_msg)
-                if sent:
-                    actions.append(f"แจ้ง {target_name} แล้ว")
-                break
-
-    # 2. Trigger Make.com webhook
-    make_url = os.getenv("MAKE_ACTION_WEBHOOK", "")
-    if make_url and task["type"] in ["delegate", "followup"]:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(make_url, json={
-                    "task_id": task_id,
-                    "task_type": task["type"],
-                    "from_bot": task["from_bot"],
-                    "from_user": task["from_user"],
-                    "message": task["detail"],
-                    "target_bot": task.get("target_bot", ""),
-                    "timestamp": datetime.now().isoformat(),
-                })
-                actions.append("ส่ง Make.com แล้ว")
-        except:
-            pass
-
-    actions.append("เข้าลูปติดตามต่อเนื่อง")
-
-    # อัพเดท status → executing
-    async with TASK_QUEUE_LOCK:
-        TASK_QUEUE[task_id]["status"] = "following_up"
-        TASK_QUEUE[task_id]["last_action_at"] = datetime.now().isoformat()
-        TASK_QUEUE[task_id]["actions_log"].extend(actions)
-
-    if task.get("airtable_record_id"):
-        asyncio.ensure_future(airtable_update_task(
-            task["airtable_record_id"],
-            {"Status": "following_up", "LastActionAt": datetime.now().isoformat()},
-        ))
-
-    logger.info(f"[TASK-LOOP] Initial execution done for {task_id}: {actions}")
-
-
-async def send_followup(task_id: str, task: Dict):
-    """ส่งข้อความติดตามงาน — ทั้งถึงทีมและ CEO"""
-    count = task["followup_count"] + 1
-    target_bot = task.get("target_bot", "")
-    target_name = BOTS_CONFIG.get(target_bot, {}).get("name", target_bot)
-
-    # ส่งเตือนทีม
-    if target_bot:
-        for sid, info in STAFF_REGISTRY.items():
-            if info.get("staffId") != "S001" and target_bot in BOT_RESPONSIBILITY:
-                reminder = (
-                    f"[ติดตามงาน ครั้งที่ {count}]\n"
-                    f"งาน: {task['detail'][:200]}\n"
-                    f"จากคุณ{task['from_user']} — กรุณาอัพเดทสถานะค่ะ"
-                )
-                await cross_oa_push(task["from_bot"], target_bot, sid, reminder)
-                break
-
-    # รายงาน CEO
-    ceo_report = (
-        f"[ติดตามงาน {task_id}] ครั้งที่ {count}/{MAX_FOLLOWUPS}\n"
-        f"งาน: {task['detail'][:100]}\n"
-        f"เป้าหมาย: {target_name}\n"
-        f"สถานะ: ยังรอดำเนินการ — ส่งเตือนทีมแล้วค่ะ"
-    )
-    await push_to_ceo(ceo_report)
-
-    # อัพเดท queue
-    async with TASK_QUEUE_LOCK:
-        TASK_QUEUE[task_id]["followup_count"] = count
-        TASK_QUEUE[task_id]["last_action_at"] = datetime.now().isoformat()
-        TASK_QUEUE[task_id]["actions_log"].append(f"[{datetime.now().strftime('%H:%M')}] ติดตามครั้งที่ {count}")
-
-    if task.get("airtable_record_id"):
-        asyncio.ensure_future(airtable_update_task(
-            task["airtable_record_id"],
-            {"FollowupCount": count, "LastActionAt": datetime.now().isoformat()},
-        ))
-
-    logger.info(f"[TASK-LOOP] Followup #{count} sent for {task_id}")
-
-
-async def escalate_task(task_id: str, task: Dict):
-    """ติดตามครบแล้ว ยังไม่มีคนรับ — escalate ถึง CEO"""
-    escalation_msg = (
-        f"[แจ้งเตือนด่วน] งาน {task_id}\n"
-        f"งาน: {task['detail'][:150]}\n"
-        f"ติดตามแล้ว {task['followup_count']} ครั้ง ยังไม่ได้รับการตอบกลับ\n"
-        f"กรุณาตัดสินใจ: ตอบ 'จบงาน' เพื่อปิด หรือให้ติดตามต่อค่ะ"
-    )
-    await push_to_ceo(escalation_msg)
-
-    async with TASK_QUEUE_LOCK:
-        TASK_QUEUE[task_id]["status"] = "escalated"
-        TASK_QUEUE[task_id]["last_action_at"] = datetime.now().isoformat()
-        TASK_QUEUE[task_id]["actions_log"].append(f"[{datetime.now().strftime('%H:%M')}] ESCALATED ถึง CEO")
-
-    if task.get("airtable_record_id"):
-        asyncio.ensure_future(airtable_update_task(
-            task["airtable_record_id"],
-            {"Status": "escalated", "LastActionAt": datetime.now().isoformat()},
-        ))
-
-    logger.info(f"[TASK-LOOP] ESCALATED {task_id} to CEO")
-
-
-# ==================== Task-Aware Message Processing ====================
-
-async def execute_task_actions(bot_id: str, user_id: str, display_name: str,
-                                message_text: str, ai_response: str) -> str:
-    """ตรวจจับคำสั่ง → เข้า queue → วนลูปอัตโนมัติ"""
-
-    # ===== เช็คคำสั่งปิดงาน =====
-    if is_close_command(message_text):
-        closed = await close_tasks_for_user(user_id)
-        if closed > 0:
-            return ai_response + f"\n\n[ดำเนินการแล้ว] ปิดงานทั้งหมด {closed} รายการ หยุดติดตามแล้วค่ะ"
-        return ai_response
-
-    # ===== เช็คคำสั่ง "สถานะงาน" =====
-    status_keywords = ["สถานะงาน", "งานค้าง", "เช็คงาน", "ดูงาน"]
-    if any(kw in message_text for kw in status_keywords):
-        summary = await get_active_tasks_summary()
-        return ai_response + f"\n\n{summary}"
-
-    # ===== ตรวจจับคำสั่งงานใหม่ =====
-    task = detect_task(message_text)
-    if not task:
-        return ai_response
-
-    # เพิ่มเข้า queue — loop จะทำงานอัตโนมัติ
-    task_id = await add_task(
-        task_type=task["type"],
-        from_bot=bot_id,
-        from_user=display_name,
-        from_user_id=user_id,
-        detail=message_text,
-        target_bot=task.get("target_bot", ""),
-    )
-
-    target_name = BOTS_CONFIG.get(task.get("target_bot", ""), {}).get("name", "")
-    action_report = (
-        f"\n\n[ดำเนินการแล้ว] รับคำสั่ง #{task_id}"
-        f"{' | แจ้ง' + target_name if target_name else ''}"
-        f" | เข้าลูปติดตามอัตโนมัติทุก {FOLLOWUP_INTERVAL_SECONDS//60} นาที"
-        f" | จะติดตามจนกว่าจะสั่ง 'จบงาน'"
-    )
-    return ai_response + action_report
-
-
-# ==================== AI Brain — สมองจริง ====================
+# ==================== Main AI Brain ====================
 
 async def ai_brain(bot_id: str, user_id: str, display_name: str,
                    message_text: str, message_type: str = "text",
                    image_id: str = None) -> str:
-    """สมอง AI ตัวจริง — รู้จักคน รู้จักองค์กร คิดเอง ทำเอง"""
+    """สมอง AI หลัก — Claude คิด แล้วเรียก AI อื่นตามจำเป็น"""
 
     bot_config = BOTS_CONFIG.get(bot_id, {})
     system_prompt = bot_config.get("system_prompt", "ตอบภาษาไทย สุภาพ")
 
-    # ===== 1. รู้จักคนก่อน — lookup Staff Registry =====
-    staff_info = STAFF_REGISTRY.get(user_id)
-    staff_context = ""
-    if staff_info:
-        staff_context = f"\n[ข้อมูลผู้พูด] ชื่อ: {staff_info['name']} | ตำแหน่ง: {staff_info['role']} | เรียกว่า: {staff_info['title']}"
-    else:
-        staff_context = f"\n[ข้อมูลผู้พูด] ชื่อ LINE: {display_name} | ตำแหน่ง: ลูกค้า/เกษตรกรภายนอก | เรียกว่า: คุณ{display_name}"
-
-    # ===== 2. ดึงประวัติบทสนทนา + โปรไฟล์จาก Airtable =====
+    # 1. ดึงประวัติบทสนทนา + โปรไฟล์ผู้ใช้
     history, profile = await asyncio.gather(
         airtable_get_conversation(user_id, bot_id, limit=8),
         airtable_get_user_profile(user_id),
     )
 
+    # 2. สร้าง context เพิ่มเติม
     extra_context = ""
     if profile:
-        extra_context += f"\n[ข้อมูลเกษตรกร] ชื่อ: {profile.get('name', display_name)}"
+        extra_context += f"\n[ข้อมูลผู้ใช้] ชื่อ: {profile.get('name', display_name)}"
         for key in ['location', 'crops', 'farmSize', 'phone', 'notes']:
             if profile.get(key):
                 extra_context += f" | {key}: {profile[key]}"
 
-    # ===== 3. วิเคราะห์รูปภาพ (GPT-4o Vision) =====
+    # 3. วิเคราะห์รูปภาพ (ถ้ามี)
     image_analysis = ""
     if message_type == "image" and image_id:
         env = get_env_vars()
         token = env.get(bot_id, {}).get("token", "")
         if token:
+            # ดาวน์โหลดรูปจาก LINE แล้วส่งให้ GPT-4o
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     img_resp = await client.get(
@@ -1273,31 +614,33 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
                     if img_resp.status_code == 200:
                         img_base64 = base64.b64encode(img_resp.content).decode()
                         img_data_url = f"data:image/jpeg;base64,{img_base64}"
-                        vision_prompt = "วิเคราะห์รูปนี้อย่างละเอียด ถ้าเป็นพืช/ผลไม้ ให้ระบุชนิด สุขภาพ โรค วิธีรักษา ถ้าเป็นพลอย/อัญมณี ให้ประเมินสี ความใส คุณภาพ ตอบเป็นภาษาไทย"
+
+                        vision_prompt = "วิเคราะห์รูปนี้อย่างละเอียด ถ้าเป็นพืช/ผลไม้ ให้ระบุชนิด สุขภาพ โรค วิธีรักษา ถ้าเป็นพลอย ให้ประเมินสี ความใส คุณภาพ ตอบเป็นภาษาไทย"
                         analysis = await call_gpt4o_vision(img_data_url, vision_prompt)
                         if analysis:
                             image_analysis = f"\n[วิเคราะห์รูปภาพจาก GPT-4o Vision]\n{analysis}"
             except Exception as e:
                 logger.error(f"Image analysis error: {e}")
 
-    # ===== 4. ค้นข้อมูล real-time (Perplexity) — เฉพาะเมื่อจำเป็นจริงๆ =====
+    # 4. ค้นข้อมูล real-time ถ้าจำเป็น (ราคาตลาด สภาพอากาศ)
     search_result = ""
-    if should_use_perplexity(message_text):
-        search_query = f"ราคาผลไม้ {message_text} จังหวัดแพร่ ประเทศไทย {datetime.now().strftime('%Y-%m-%d')}"
+    search_keywords = ["ราคา", "ตลาด", "อากาศ", "ข่าว", "วันนี้", "ล่าสุด", "สภาพ"]
+    if any(kw in message_text for kw in search_keywords):
+        search_query = f"{message_text} จังหวัดแพร่ ประเทศไทย {datetime.now().strftime('%Y-%m-%d')}"
         result = await call_perplexity(search_query)
         if result:
             search_result = f"\n[ข้อมูล real-time จาก Perplexity]\n{result[:500]}"
 
-    # ===== 5. ประกอบ system prompt เต็ม =====
-    full_system = system_prompt + staff_context
+    # 5. สร้าง system prompt เต็ม
+    full_system = system_prompt
     if extra_context:
-        full_system += extra_context
+        full_system += f"\n\n{extra_context}"
     if image_analysis:
-        full_system += image_analysis
+        full_system += f"\n\n{image_analysis}"
     if search_result:
-        full_system += search_result
+        full_system += f"\n\n{search_result}"
 
-    # ===== 6. สร้าง messages จากประวัติ =====
+    # 6. สร้าง messages array จากประวัติบทสนทนา
     messages = []
     for h in history:
         if h.get("UserMessage"):
@@ -1305,6 +648,7 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
         if h.get("BotResponse"):
             messages.append({"role": "assistant", "content": h["BotResponse"]})
 
+    # เพิ่มข้อความปัจจุบัน
     current_msg = message_text
     if message_type == "image":
         current_msg = f"[ผู้ใช้ส่งรูปภาพมา]{' ' + message_text if message_text else ''}"
@@ -1313,16 +657,18 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
 
     messages.append({"role": "user", "content": f"[{display_name}]: {current_msg}"})
 
-    # ===== 7. Claude — สมองหลัก =====
-    response = await call_claude(messages, full_system)
+    # 7. เรียก Claude — สมองหลัก
+    response = await call_claude(messages, full_system, bot_id)
 
-    # ===== 8. Fallback: Gemini Flash =====
+    # 8. Fallback cascade ถ้า Claude ล้มเหลว
     if not response:
         logger.warning(f"Claude failed for {bot_id}, trying Gemini...")
-        response = await call_gemini_fast(f"{full_system}\n\nUser: {current_msg}\nAssistant:")
+        response = await call_gemini_fast(
+            f"{full_system}\n\nUser: {current_msg}\nAssistant:"
+        )
 
     if not response:
-        response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+        response = f"ขออภัยค่ะ น้อง{bot_config.get('name', '')} ไม่สามารถตอบได้ในขณะนี้ กรุณาส่งข้อความมาอีกครั้งนะคะ"
 
     return response
 
@@ -1330,163 +676,110 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
 # ==================== Webhook Processing ====================
 
 async def process_webhook_background(bot_id: str, request_body: Dict):
+    """Background wrapper — เรียก process_webhook โดยไม่ต้องใช้ BackgroundTasks"""
     try:
         await process_webhook_core(bot_id, request_body)
     except Exception as e:
         logger.error(f"Background webhook error: {e}")
 
-
 async def process_webhook_core(bot_id: str, request_body: Dict):
+    """ประมวลผล LINE webhook — AI ตอบตรง"""
     start_time = time.time()
+
     events = request_body.get("events", [])
     if not events:
         return
 
     for event in events:
         event_type = event.get("type", "")
-        source = event.get("source", {})
-        source_type = source.get("type", "user")
-        user_id = source.get("userId", "unknown")
-        group_id = source.get("groupId", "") if source_type == "group" else ""
 
-        # ===== GROUP MEMBER TRACKING: memberJoined / memberLeft =====
-        if event_type == "memberJoined" and group_id:
-            joined_members = event.get("joined", {}).get("members", [])
-            for member in joined_members:
-                mid = member.get("userId", "")
-                if mid:
-                    profile = await line_get_user_profile(bot_id, mid)
-                    dname = profile.get("displayName", "") if profile else ""
-                    await track_group_member(bot_id, group_id, mid, dname, action="joined")
-            continue
-
-        if event_type == "memberLeft" and group_id:
-            left_members = event.get("left", {}).get("members", [])
-            for member in left_members:
-                mid = member.get("userId", "")
-                if mid:
-                    await track_group_member(bot_id, group_id, mid, action="left")
-            continue
-
-        if event_type == "follow":
-            logger.info(f"[{bot_id}] New follower: {user_id}")
-            continue
-
+        # รองรับเฉพาะ message events
         if event_type != "message":
+            if event_type == "follow":
+                logger.info(f"[{bot_id}] New follower: {event.get('source', {}).get('userId', 'unknown')}")
             continue
 
+        # ป้องกันข้อความซ้ำ (LINE retry)
         msg_id_check = event.get("message", {}).get("id", "")
         if msg_id_check and await is_duplicate(f"{bot_id}:{msg_id_check}"):
-            logger.warning(f"[DEDUP] Skipping duplicate {msg_id_check}")
+            logger.warning(f"[DEDUP] Skipping duplicate message {msg_id_check} for {bot_id}")
             continue
 
         reply_token = event.get("replyToken", "")
+        source = event.get("source", {})
+        user_id = source.get("userId", "unknown")
+        source_type = source.get("type", "user")
+        group_id = source.get("groupId", "")
 
         message = event.get("message", {})
         msg_type = message.get("type", "text")
         msg_text = message.get("text", "")
         msg_id = message.get("id", "")
 
-        # ===== GROUP MEMBER AUTO-TRACKING: ทุกข้อความในกลุ่ม =====
-        bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", "")
-        if source_type == "group" and group_id and user_id != "unknown":
-            # Get display name for tracking (don't block on this)
-            profile_for_track = await line_get_user_profile(bot_id, user_id)
-            track_name = profile_for_track.get("displayName", "") if profile_for_track else ""
-            await track_group_member(bot_id, group_id, user_id, track_name, action="seen")
-
         # กลุ่ม: ตอบเฉพาะเมื่อถูกเรียกชื่อ
+        bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", "")
         if source_type == "group":
             trigger_words = [bot_name, "น้อง", "ai", "AI", "เอไอ", "บอท"]
             if not any(w.lower() in msg_text.lower() for w in trigger_words if w):
-                continue
+                continue  # เงียบ ไม่ตอบเมื่อไม่ถูกเรียก
 
+        # ดึง display name
         profile = await line_get_user_profile(bot_id, user_id)
         display_name = profile.get("displayName", "ท่าน") if profile else "ท่าน"
 
+        # เรียกสมอง AI
         try:
             ai_response = await ai_brain(
-                bot_id=bot_id, user_id=user_id, display_name=display_name,
-                message_text=msg_text, message_type=msg_type,
+                bot_id=bot_id,
+                user_id=user_id,
+                display_name=display_name,
+                message_text=msg_text,
+                message_type=msg_type,
                 image_id=msg_id if msg_type == "image" else None,
             )
         except Exception as e:
             logger.error(f"AI Brain error: {e}")
-            ai_response = "ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+            ai_response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+            # ส่งแจ้งเตือน CEO ทันที
             asyncio.ensure_future(send_error_alert(bot_id, "AI_BRAIN_ERROR", str(e)))
 
-        # ===== ทำงานจริงก่อนตอบ — execute task actions =====
-        ai_response = await execute_task_actions(
-            bot_id, user_id, display_name, msg_text, ai_response
-        )
-
+        # ตอบกลับ LINE (Reply API ก่อน → Push API fallback)
         await line_reply(bot_id, reply_token, ai_response, user_id=user_id)
 
-        # บันทึกผลเข้าส่วนกลาง (ทำเสร็จแล้วค่อยรายงาน) — v2.4.0: include groupId
+        # บันทึกลง Airtable (non-blocking)
         asyncio.ensure_future(airtable_save_message(
             user_id, bot_id, display_name,
             msg_text if msg_type == "text" else f"[{msg_type}]",
             ai_response,
-            group_id=group_id,
         ))
 
+        # Log to monitor
         elapsed = (time.time() - start_time) * 1000
         asyncio.ensure_future(monitor.log_message(
-            bot_id=bot_id, bot_name=bot_name, sender=display_name,
-            message_in=msg_text[:200], message_out=ai_response[:200],
-            msg_type=msg_type, ai_used="claude", status="success",
+            bot_id=bot_id,
+            bot_name=bot_name,
+            sender=display_name,
+            message_in=msg_text[:200],
+            message_out=ai_response[:200],
+            msg_type=msg_type,
+            ai_used="claude",
+            status="success",
             response_ms=round(elapsed),
         ))
 
 
 # ==================== Routes ====================
 
-# ==================== Startup: Launch Task Loop + Restore Queue ====================
-
-@app.on_event("startup")
-async def startup_event():
-    """เริ่มต้น Task Loop + โหลดงานค้างจาก Airtable"""
-    logger.info("[STARTUP] Loading active tasks from Airtable...")
-    try:
-        records = await airtable_load_active_tasks()
-        async with TASK_QUEUE_LOCK:
-            for r in records:
-                f = r.get("fields", {})
-                tid = f.get("TaskId", str(uuid.uuid4())[:8])
-                TASK_QUEUE[tid] = {
-                    "id": tid,
-                    "type": f.get("TaskType", ""),
-                    "from_bot": f.get("FromBot", ""),
-                    "from_user": f.get("FromUser", ""),
-                    "from_user_id": f.get("FromUserId", ""),
-                    "detail": f.get("Detail", ""),
-                    "target_bot": f.get("TargetBot", ""),
-                    "status": f.get("Status", "following_up"),
-                    "created_at": f.get("CreatedAt", datetime.now().isoformat()),
-                    "last_action_at": f.get("LastActionAt", datetime.now().isoformat()),
-                    "followup_count": f.get("FollowupCount", 0) or 0,
-                    "actions_log": [f"[startup] restored from Airtable"],
-                    "airtable_record_id": r.get("id"),
-                }
-        logger.info(f"[STARTUP] Restored {len(records)} active tasks from Airtable")
-    except Exception as e:
-        logger.warning(f"[STARTUP] Could not load tasks: {e}")
-
-    # เริ่ม background task loop
-    asyncio.create_task(task_loop())
-    logger.info("[STARTUP] Persistent Task Loop started!")
-
-
-# ==================== Routes ====================
-
 @app.post("/webhook/{bot_id}")
 async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTasks):
+    """LINE webhook endpoint"""
     if bot_id not in BOTS_CONFIG:
         raise HTTPException(status_code=400, detail="Invalid bot_id")
 
     body = await request.body()
     body_str = body.decode("utf-8")
 
+    # Verify signature
     signature = request.headers.get("x-line-signature", "")
     env = get_env_vars()
     secret = env.get(bot_id, {}).get("secret", "")
@@ -1495,98 +788,39 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     request_body = json.loads(body_str)
+    # ตอบ LINE 200 ทันที แล้วประมวลผลใน background
+    # ป้องกัน LINE retry ซ้ำ (LINE timeout ~1 วินาที)
     background_tasks.add_task(process_webhook_background, bot_id, request_body)
     return {"status": "ok"}
 
 
-@app.get("/groups")
-async def groups_api():
-    """v2.4.0: ดูสมาชิกกลุ่มทั้งหมดที่ระบบตรวจพบ"""
-    summary = get_group_members_summary()
-    return {
-        "status": "ok",
-        "version": "2.4.0",
-        "total_groups": len(summary),
-        "total_members": sum(g["memberCount"] for g in summary.values()),
-        "groups": summary,
-        "known_group_names": GROUP_NAMES,
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
-@app.get("/groups/{bot_id}/{group_id}")
-async def group_detail_api(bot_id: str, group_id: str):
-    """v2.4.0: ดูสมาชิกกลุ่มเฉพาะ"""
-    cache_key = f"{bot_id}:{group_id}"
-    async with GROUP_MEMBERS_LOCK:
-        members = GROUP_MEMBERS.get(cache_key, {})
-    group_name = GROUP_NAMES.get(group_id, "unknown")
-    return {
-        "botId": bot_id,
-        "groupId": group_id,
-        "groupName": group_name,
-        "memberCount": len([m for m in members.values() if m.get("status") != "left"]),
-        "members": members,
-    }
-
-
 @app.get("/health")
 async def health():
-    async with TASK_QUEUE_LOCK:
-        active_count = len([t for t in TASK_QUEUE.values() if t["status"] not in ["completed", "cancelled"]])
     return {
         "status": "healthy",
-        "version": "2.4.0-group-tracking",
-        "brain": "Claude API + Business Knowledge + Staff Registry + Task Loop",
+        "version": "2.0.1-multi-ai",
+        "brain": "Claude API",
         "vision": "GPT-4o",
-        "search": "Perplexity (smart trigger)",
+        "search": "Perplexity",
         "fallback": "Gemini Flash",
         "database": "Airtable",
-        "group_tracking": {"tracked_groups": len(GROUP_MEMBERS), "total_members": sum(len(m) for m in GROUP_MEMBERS.values())},
-        "task_loop": {"active_tasks": active_count, "interval_sec": LOOP_INTERVAL_SECONDS, "followup_sec": FOLLOWUP_INTERVAL_SECONDS},
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
-        "staff_count": len(set(s["staffId"] for s in STAFF_REGISTRY.values())),
-        "fruits": ["ส้มเขียวหวาน", "ส้มโอ", "ทุเรียน", "ลำไย"],
     }
 
 
 @app.get("/diagnostic")
 async def diagnostic():
-    results = {"timestamp": datetime.now().isoformat(), "version": "2.3.0", "checks": {}}
-    api_checks = {
-        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
-        "PERPLEXITY_API_KEY": bool(os.getenv("PERPLEXITY_API_KEY")),
-        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
-        "AIRTABLE_PAT": bool(AIRTABLE_PAT),
-        "CEO_LINE_USERID": bool(os.getenv("CEO_LINE_USERID")),
-    }
-    results["checks"]["api_keys"] = api_checks
-    env = get_env_vars()
-    line_checks = {}
-    for bot_id, creds in env.items():
-        line_checks[bot_id] = {"token": bool(creds.get("token")), "secret": bool(creds.get("secret"))}
-    results["checks"]["line_tokens"] = line_checks
-    all_api_ok = all(api_checks.values())
-    all_line_ok = all(c["token"] for c in line_checks.values())
-    results["healthy"] = all_api_ok and all_line_ok
-    results["missing"] = [k for k, v in api_checks.items() if not v]
-    results["missing"] += [f"LINE_{k}" for k, v in line_checks.items() if not v["token"]]
-    return results
+    """ตรวจสอบระบบทั้งหมด — API keys, LINE tokens, สถานะ"""
+    return await self_diagnostic()
 
 
 @app.get("/monitor", response_class=HTMLResponse)
 async def monitor_dashboard():
     logs = await monitor.get_logs(limit=50)
     summary = await monitor.get_summary()
-    log_html = ""
-    for l in logs:
-        status_class = l.get("status", "")
-        log_html += f'<div class="log {status_class}"><span class="tag">{l.get("bot_name","")}</span> <b>{l.get("sender","")}</b>: {str(l.get("message_in",""))[:100]}<br/><span class="time">{l.get("timestamp","")} | {l.get("ai_used","")} | {l.get("response_ms",0)}ms</span></div>'
-
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>AI Monitor v2.1</title>
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>AI Agent Monitor v2.0</title>
 <style>
 body{{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#eee;margin:0;padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -1597,21 +831,21 @@ h1{{text-align:center;color:#00d4ff;font-size:2em}}
 .stat .val{{font-size:2em;font-weight:bold;margin-top:8px}}
 .log{{background:#0f3460;padding:10px;margin:6px 0;border-radius:6px;border-left:3px solid #00d4ff}}
 .log.success{{border-color:#00ff88}}
-.log.error{{border-color:#ff4444}}
+.log.failed{{border-color:#ff4444}}
 .tag{{background:#00d4ff;color:#000;padding:2px 6px;border-radius:3px;font-size:.8em}}
 .time{{color:#888;font-size:.8em}}
 </style></head>
 <body><div class="container">
-<h1>AI Agent Monitor v2.3 — Persistent Task Loop</h1>
+<h1>AI Agent Monitor v2.0 — Claude Brain</h1>
 <div class="stats">
 <div class="stat"><h3>Total Today</h3><div class="val">{summary.get('total',0)}</div></div>
 <div class="stat"><h3>Success</h3><div class="val">{summary.get('success',0)}</div></div>
 <div class="stat"><h3>Rate</h3><div class="val">{summary.get('success_rate',0):.0f}%</div></div>
-<div class="stat"><h3>Fruits</h3><div class="val">4</div></div>
 </div>
 <h2>Recent Messages</h2>
-{log_html}
+{"".join([f'<div class="log {l.get("status","")}"><span class="tag">{l.get("bot_name","")}</span> <b>{l.get("sender","")}</b>: {l.get("message_in","")[:100]}<br/><span class="time">{l.get("timestamp","")} | {l.get("ai_used","")} | {l.get("response_ms",0)}ms</span></div>' for l in logs])}
 </div></body></html>"""
+    return html
 
 
 @app.get("/monitor/api")
@@ -1620,5 +854,7 @@ async def monitor_api(bot_id: str = None, limit: int = 50):
     return {"count": len(logs), "logs": logs}
 
 
+# ==================== Main ====================
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
