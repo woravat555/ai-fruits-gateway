@@ -1,9 +1,15 @@
 """
-Railway Gateway v2.3.0 — Persistent Task Loop Engine
+Railway Gateway v2.4.0 — Group Member Tracking + Persistent Task Loop
 
+v2.4.0 NEW: Auto-detect LINE group members from webhook events
+- ทุกข้อความในกลุ่ม → บันทึกสมาชิกอัตโนมัติ
+- memberJoined/memberLeft events → เพิ่ม/ลบสมาชิกทันที
+- GET /groups → ดูสมาชิกทุกกลุ่มแบบ real-time
+- ซิงค์กับ Google Sheets GroupMembers tab
+- CEO RULE: ส่งคำสั่งงานไปกลุ่มที่มีสมาชิกอยู่เท่านั้น
+
+v2.3.0: Persistent Task Loop Engine
 AI เป็นสมองคิดเอง ทำเอง วนลูปติดตามไปเรื่อยๆ จนกว่าจะสั่งจบ
-ทุกคำสั่ง → แผนปฏิบัติงาน → ทำจริง → ติดตามต่อเนื่อง → รายงาน CEO
-ไม่หยุดจนกว่า CEO จะสั่ง "จบงาน" หรือ "เสร็จแล้ว"
 
 5 LINE OA Agents ของ Imperial Fruitia Group จ.แพร่
 ผลไม้ 4 ชนิดเท่านั้น: ส้มเขียวหวาน, ส้มโอ, ทุเรียน, ลำไย
@@ -32,7 +38,7 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Railway Gateway v2.3.0 — Persistent Task Loop", version="2.3.0")
+app = FastAPI(title="Railway Gateway v2.4.0 — Group Tracking + Task Loop", version="2.4.0")
 
 # Claude model
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
@@ -67,6 +73,136 @@ STAFF_REGISTRY = {
     # PAM
     "U9731b5e6c4959006249b8070b3cb2e9e": {"name": "แพม", "role": "ทีมขาย", "staffId": "S006", "title": "คุณแพม"},
 }
+
+# ==================== GROUP MEMBER TRACKING ====================
+# Auto-detect group members from webhook events
+# CEO Rule: ส่งคำสั่งงานไปกลุ่มที่มีสมาชิกอยู่เท่านั้น
+
+# In-memory cache: { "botId:groupId": { "userId": { "displayName": ..., "staffId": ..., "joinedAt": ..., "lastSeen": ... } } }
+GROUP_MEMBERS: Dict[str, Dict[str, Dict]] = {}
+GROUP_MEMBERS_LOCK = asyncio.Lock()
+
+# Google Sheets webhook for syncing GroupMembers
+GSHEETS_MEMORY_SPREADSHEET_ID = "1-lqcruGtJiMzKFS2MK5gqcxaerzt9PiOTxmdTLqe_eM"
+
+# Known group names (from ConversationLog mining 30Mar2026)
+GROUP_NAMES: Dict[str, str] = {
+    "C1b499a8c75767f60191b2eebc2f45bee": "น้องแพร่กลุ่ม (AiPhrae)",
+    "C619af8196d9c3f8f94514375caefe1fe": "AiMarketing (@930pchss)",
+    "C3eb883ab5fca58bcd591b48aca90972b": "บริหาร ExecCopilot",
+    "Cced60f1261e464fee8f222e9afb1479a": "Jewelry กลุ่ม",
+    "C28501a07933baabf7718744005c2f653": "AiPhrae Group 2",
+    "Ce9e8c3465c0c72bf0664fff4a6fa08c9": "Ai Fruits Team (@930pchss)",
+    "C67c16229334be6919204ded1969aac1a": "Woravat Del AI (@ExecCopilot)",
+}
+
+
+async def track_group_member(bot_id: str, group_id: str, user_id: str, display_name: str = "", action: str = "seen"):
+    """Track a group member — called on every group message and join/leave event"""
+    cache_key = f"{bot_id}:{group_id}"
+    now = datetime.now().isoformat()
+
+    # Lookup staffId from STAFF_REGISTRY
+    staff = STAFF_REGISTRY.get(user_id, {})
+    staff_id = staff.get("staffId", "")
+    if not display_name:
+        display_name = staff.get("name", "Unknown")
+
+    async with GROUP_MEMBERS_LOCK:
+        if cache_key not in GROUP_MEMBERS:
+            GROUP_MEMBERS[cache_key] = {}
+
+        if action == "left":
+            if user_id in GROUP_MEMBERS[cache_key]:
+                GROUP_MEMBERS[cache_key][user_id]["status"] = "left"
+                GROUP_MEMBERS[cache_key][user_id]["leftAt"] = now
+                logger.info(f"[GROUP-TRACK] {display_name} LEFT {group_id} on {bot_id}")
+            return
+
+        if user_id not in GROUP_MEMBERS[cache_key]:
+            # New member discovered
+            GROUP_MEMBERS[cache_key][user_id] = {
+                "displayName": display_name,
+                "staffId": staff_id,
+                "role": staff.get("role", ""),
+                "status": "active",
+                "firstSeen": now,
+                "lastSeen": now,
+                "source": "memberJoined" if action == "joined" else "message",
+            }
+            logger.info(f"[GROUP-TRACK] NEW member {display_name} ({user_id[:8]}...) in {GROUP_NAMES.get(group_id, group_id[:12])} on {bot_id}")
+
+            # Async save to Airtable ConversationLog as discovery event
+            asyncio.ensure_future(save_group_member_to_sheets(
+                bot_id, group_id, user_id, display_name, staff_id, action
+            ))
+        else:
+            # Update existing member
+            GROUP_MEMBERS[cache_key][user_id]["lastSeen"] = now
+            GROUP_MEMBERS[cache_key][user_id]["displayName"] = display_name or GROUP_MEMBERS[cache_key][user_id]["displayName"]
+            if staff_id:
+                GROUP_MEMBERS[cache_key][user_id]["staffId"] = staff_id
+
+
+async def save_group_member_to_sheets(bot_id: str, group_id: str, user_id: str,
+                                       display_name: str, staff_id: str, action: str):
+    """Save newly discovered group member to Airtable KeyFacts for persistence"""
+    if not AIRTABLE_PAT:
+        return
+    try:
+        group_name = GROUP_NAMES.get(group_id, f"unknown-{group_id[:12]}")
+        fact = f"Group member discovered: {display_name} ({staff_id or 'no-staffId'}) in {group_name} ({group_id}) on {bot_id} via {action}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/KeyFacts",
+                headers={
+                    "Authorization": f"Bearer {AIRTABLE_PAT}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "records": [{
+                        "fields": {
+                            "AgentId": f"gateway-{bot_id}",
+                            "UserId": "SYSTEM",
+                            "Category": "group-member",
+                            "Fact": fact,
+                            "Importance": "normal",
+                            "Source": f"webhook-{action}",
+                        }
+                    }]
+                },
+            )
+        logger.info(f"[GROUP-TRACK] Saved to Airtable: {display_name} in {group_name}")
+    except Exception as e:
+        logger.warning(f"[GROUP-TRACK] Save error: {e}")
+
+
+def get_group_members_summary() -> Dict:
+    """Get a summary of all tracked groups and their members"""
+    summary = {}
+    for cache_key, members in GROUP_MEMBERS.items():
+        bot_id, group_id = cache_key.split(":", 1)
+        group_name = GROUP_NAMES.get(group_id, f"unknown-{group_id[:12]}")
+        active_members = {uid: m for uid, m in members.items() if m.get("status") != "left"}
+        summary[cache_key] = {
+            "botId": bot_id,
+            "groupId": group_id,
+            "groupName": group_name,
+            "memberCount": len(active_members),
+            "members": [
+                {
+                    "userId": uid[:12] + "...",
+                    "displayName": m.get("displayName", "Unknown"),
+                    "staffId": m.get("staffId", ""),
+                    "role": m.get("role", ""),
+                    "lastSeen": m.get("lastSeen", ""),
+                    "source": m.get("source", ""),
+                }
+                for uid, m in active_members.items()
+            ],
+        }
+    return summary
+
 
 # ==================== BUSINESS KNOWLEDGE ====================
 # กฎเหล็ก: ผลไม้ 4 ชนิดเท่านั้น ห้ามพูดเรื่องอื่น
@@ -332,10 +468,23 @@ async def airtable_get_conversation(user_id: str, bot_id: str, limit: int = 8) -
 
 
 async def airtable_save_message(user_id: str, bot_id: str, display_name: str,
-                                 message_in: str, message_out: str):
+                                 message_in: str, message_out: str,
+                                 group_id: str = ""):
     if not AIRTABLE_PAT:
         return
     try:
+        fields = {
+            "UserId": user_id,
+            "Bot": bot_id,
+            "DisplayName": display_name,
+            "UserMessage": message_in[:1000],
+            "BotResponse": message_out[:2000],
+            "Timestamp": datetime.now().isoformat(),
+        }
+        # v2.4.0: Include GroupId for group messages
+        if group_id:
+            fields["GroupId"] = group_id
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
                 f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/ConversationLog",
@@ -343,18 +492,7 @@ async def airtable_save_message(user_id: str, bot_id: str, display_name: str,
                     "Authorization": f"Bearer {AIRTABLE_PAT}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "records": [{
-                        "fields": {
-                            "UserId": user_id,
-                            "Bot": bot_id,
-                            "DisplayName": display_name,
-                            "UserMessage": message_in[:1000],
-                            "BotResponse": message_out[:2000],
-                            "Timestamp": datetime.now().isoformat(),
-                        }
-                    }]
-                },
+                json={"records": [{"fields": fields}]},
             )
     except Exception as e:
         logger.warning(f"Airtable save error: {e}")
@@ -1206,9 +1344,35 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
 
     for event in events:
         event_type = event.get("type", "")
+        source = event.get("source", {})
+        source_type = source.get("type", "user")
+        user_id = source.get("userId", "unknown")
+        group_id = source.get("groupId", "") if source_type == "group" else ""
+
+        # ===== GROUP MEMBER TRACKING: memberJoined / memberLeft =====
+        if event_type == "memberJoined" and group_id:
+            joined_members = event.get("joined", {}).get("members", [])
+            for member in joined_members:
+                mid = member.get("userId", "")
+                if mid:
+                    profile = await line_get_user_profile(bot_id, mid)
+                    dname = profile.get("displayName", "") if profile else ""
+                    await track_group_member(bot_id, group_id, mid, dname, action="joined")
+            continue
+
+        if event_type == "memberLeft" and group_id:
+            left_members = event.get("left", {}).get("members", [])
+            for member in left_members:
+                mid = member.get("userId", "")
+                if mid:
+                    await track_group_member(bot_id, group_id, mid, action="left")
+            continue
+
+        if event_type == "follow":
+            logger.info(f"[{bot_id}] New follower: {user_id}")
+            continue
+
         if event_type != "message":
-            if event_type == "follow":
-                logger.info(f"[{bot_id}] New follower: {event.get('source', {}).get('userId', 'unknown')}")
             continue
 
         msg_id_check = event.get("message", {}).get("id", "")
@@ -1217,17 +1381,21 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
             continue
 
         reply_token = event.get("replyToken", "")
-        source = event.get("source", {})
-        user_id = source.get("userId", "unknown")
-        source_type = source.get("type", "user")
 
         message = event.get("message", {})
         msg_type = message.get("type", "text")
         msg_text = message.get("text", "")
         msg_id = message.get("id", "")
 
-        # กลุ่ม: ตอบเฉพาะเมื่อถูกเรียกชื่อ
+        # ===== GROUP MEMBER AUTO-TRACKING: ทุกข้อความในกลุ่ม =====
         bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", "")
+        if source_type == "group" and group_id and user_id != "unknown":
+            # Get display name for tracking (don't block on this)
+            profile_for_track = await line_get_user_profile(bot_id, user_id)
+            track_name = profile_for_track.get("displayName", "") if profile_for_track else ""
+            await track_group_member(bot_id, group_id, user_id, track_name, action="seen")
+
+        # กลุ่ม: ตอบเฉพาะเมื่อถูกเรียกชื่อ
         if source_type == "group":
             trigger_words = [bot_name, "น้อง", "ai", "AI", "เอไอ", "บอท"]
             if not any(w.lower() in msg_text.lower() for w in trigger_words if w):
@@ -1254,11 +1422,12 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
 
         await line_reply(bot_id, reply_token, ai_response, user_id=user_id)
 
-        # บันทึกผลเข้าส่วนกลาง (ทำเสร็จแล้วค่อยรายงาน)
+        # บันทึกผลเข้าส่วนกลาง (ทำเสร็จแล้วค่อยรายงาน) — v2.4.0: include groupId
         asyncio.ensure_future(airtable_save_message(
             user_id, bot_id, display_name,
             msg_text if msg_type == "text" else f"[{msg_type}]",
             ai_response,
+            group_id=group_id,
         ))
 
         elapsed = (time.time() - start_time) * 1000
@@ -1330,18 +1499,50 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
     return {"status": "ok"}
 
 
+@app.get("/groups")
+async def groups_api():
+    """v2.4.0: ดูสมาชิกกลุ่มทั้งหมดที่ระบบตรวจพบ"""
+    summary = get_group_members_summary()
+    return {
+        "status": "ok",
+        "version": "2.4.0",
+        "total_groups": len(summary),
+        "total_members": sum(g["memberCount"] for g in summary.values()),
+        "groups": summary,
+        "known_group_names": GROUP_NAMES,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/groups/{bot_id}/{group_id}")
+async def group_detail_api(bot_id: str, group_id: str):
+    """v2.4.0: ดูสมาชิกกลุ่มเฉพาะ"""
+    cache_key = f"{bot_id}:{group_id}"
+    async with GROUP_MEMBERS_LOCK:
+        members = GROUP_MEMBERS.get(cache_key, {})
+    group_name = GROUP_NAMES.get(group_id, "unknown")
+    return {
+        "botId": bot_id,
+        "groupId": group_id,
+        "groupName": group_name,
+        "memberCount": len([m for m in members.values() if m.get("status") != "left"]),
+        "members": members,
+    }
+
+
 @app.get("/health")
 async def health():
     async with TASK_QUEUE_LOCK:
         active_count = len([t for t in TASK_QUEUE.values() if t["status"] not in ["completed", "cancelled"]])
     return {
         "status": "healthy",
-        "version": "2.3.0-persistent-loop",
+        "version": "2.4.0-group-tracking",
         "brain": "Claude API + Business Knowledge + Staff Registry + Task Loop",
         "vision": "GPT-4o",
         "search": "Perplexity (smart trigger)",
         "fallback": "Gemini Flash",
         "database": "Airtable",
+        "group_tracking": {"tracked_groups": len(GROUP_MEMBERS), "total_members": sum(len(m) for m in GROUP_MEMBERS.values())},
         "task_loop": {"active_tasks": active_count, "interval_sec": LOOP_INTERVAL_SECONDS, "followup_sec": FOLLOWUP_INTERVAL_SECONDS},
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
