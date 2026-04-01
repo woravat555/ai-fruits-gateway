@@ -1114,9 +1114,10 @@ async def scan_group_members(bot_id: str, group_id: str, force: bool = False) ->
         # Rate limit — ไม่ยิง API ถี่เกินไป
         await asyncio.sleep(0.1)
 
-    logger.info(f"[GROUP-SCAN] Done: bot={bot_id}, group={group_id[:15]}, "
+    logger.info(f"[GROUP-SCAN] Done: bot={bot_id}, group={group_id}, "
                 f"total_members={len(member_ids)}, new_learned={new_learned}, "
                 f"total_known={people.total_known}")
+    # บันทึก group ID สำหรับ startup rescan (แสดงใน /api/groups)
     return new_learned
 
 
@@ -1561,9 +1562,10 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
 
 @app.on_event("startup")
 async def startup_sync_people():
-    """เมื่อ server เริ่มทำงาน — sync ข้อมูลคนจาก StaffRegistry Google Sheet"""
+    """เมื่อ server เริ่มทำงาน — โหลดข้อมูลคนทั้งหมดจากทุกแหล่ง"""
+
+    # 1. โหลด StaffRegistry จาก Google Sheets
     try:
-        # ดึง StaffRegistry จาก Google Sheets (public CSV)
         sheet_id = "1-lqcruGtJiMzKFS2MK5gqcxaerzt9PiOTxmdTLqe_eM"
         sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0"
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -1577,18 +1579,65 @@ async def startup_sync_people():
                         record = {str(i): v for i, v in enumerate(row)}
                         records.append(record)
                     await people.learn_from_staff_registry(records)
-                    logger.info(f"[STARTUP] People Intelligence synced: {people.total_known} people known")
-            else:
-                logger.warning(f"[STARTUP] StaffRegistry sync failed: HTTP {resp.status_code}")
+                    logger.info(f"[STARTUP] StaffRegistry synced: {people.total_known} people known")
     except Exception as e:
-        logger.warning(f"[STARTUP] StaffRegistry sync error: {e} — using seed data only")
+        logger.warning(f"[STARTUP] StaffRegistry sync error: {e}")
+
+    # 2. โหลด UnifiedProfiles จาก Airtable — เกษตรกร ลูกค้า ทุกคนที่เคยลงทะเบียน
+    try:
+        if AIRTABLE_PAT:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                offset = None
+                total_loaded = 0
+                for _ in range(50):  # max 50 pages (5000 records)
+                    params = {"pageSize": 100}
+                    if offset:
+                        params["offset"] = offset
+                    resp = await client.get(
+                        f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/UnifiedProfiles",
+                        headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
+                        params=params,
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(f"[STARTUP] Airtable UnifiedProfiles failed: HTTP {resp.status_code}")
+                        break
+                    data = resp.json()
+                    for record in data.get("records", []):
+                        fields = record.get("fields", {})
+                        uid = fields.get("LINE_UserID", "")
+                        name = fields.get("DisplayName", "")
+                        if uid and uid.startswith("U"):
+                            await people.identify(uid, fields.get("RegisteredVia", "unknown"), name)
+                            total_loaded += 1
+                    offset = data.get("offset")
+                    if not offset:
+                        break
+                logger.info(f"[STARTUP] Airtable UnifiedProfiles loaded: {total_loaded} users, total known: {people.total_known}")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Airtable load error: {e}")
+
+    # 3. สแกนกลุ่มที่เคยรู้จัก (จาก env var SCAN_GROUP_IDS)
+    scan_groups_env = os.getenv("SCAN_GROUP_IDS", "")
+    if scan_groups_env:
+        group_pairs = [g.strip() for g in scan_groups_env.split(",") if g.strip()]
+        for pair in group_pairs:
+            parts = pair.split(":")
+            if len(parts) == 2:
+                bot_id_g, group_id_g = parts
+                try:
+                    count = await scan_group_members(bot_id_g.strip(), group_id_g.strip(), force=True)
+                    logger.info(f"[STARTUP] Group scan: bot={bot_id_g}, new={count}, total={people.total_known}")
+                except Exception as e:
+                    logger.warning(f"[STARTUP] Group scan error: {e}")
+
+    logger.info(f"[STARTUP] People Intelligence ready — total known: {people.total_known} people")
 
 
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
-        "version": "2.13.0-full-ai-brain-groups",
+        "version": "2.13.1-full-people-memory",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
@@ -1738,6 +1787,30 @@ async def api_people_search(q: str = ""):
             }
             for r in results
         ],
+    }
+
+
+@app.get("/api/groups")
+async def api_groups():
+    """ดูกลุ่มที่ระบบรู้จัก + จำนวนสมาชิกในแต่ละกลุ่ม"""
+    groups_info = []
+    for scan_key, timestamp in _scanned_groups.items():
+        parts = scan_key.split(":", 1)
+        bot_id_g = parts[0] if len(parts) > 1 else ""
+        group_id_g = parts[1] if len(parts) > 1 else scan_key
+        members = people.get_group_members(group_id_g)
+        groups_info.append({
+            "bot_id": bot_id_g,
+            "group_id": group_id_g,
+            "members": len(members),
+            "last_scanned": datetime.fromtimestamp(timestamp).isoformat(),
+            "env_format": f"{bot_id_g}:{group_id_g}",
+        })
+    return {
+        "total_groups": len(groups_info),
+        "total_people": people.total_known,
+        "groups": groups_info,
+        "hint": "Copy env_format values to Railway SCAN_GROUP_IDS for auto-scan on startup",
     }
 
 
