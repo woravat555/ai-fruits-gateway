@@ -927,8 +927,37 @@ async def line_get_content_url(bot_id: str, message_id: str) -> Optional[str]:
     return f"https://api-data.line.me/v2/bot/message/{message_id}/content"
 
 
-async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
-    """ดึงโปรไฟล์ผู้ใช้จาก LINE"""
+async def line_get_user_profile(bot_id: str, user_id: str, group_id: str = "") -> Optional[Dict]:
+    """ดึงโปรไฟล์ผู้ใช้จาก LINE — ลอง friend API ก่อน ถ้าไม่ได้ลอง group API"""
+    env = get_env_vars()
+    token = env.get(bot_id, {}).get("token", "")
+    if not token:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # 1. ลอง Friend Profile API (ใช้ได้เมื่อ add เป็นเพื่อน)
+            resp = await client.get(
+                f"https://api.line.me/v2/bot/profile/{user_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+
+            # 2. Fallback: Group Member Profile API (ใช้ได้เมื่ออยู่ในกลุ่มเดียวกัน)
+            if group_id:
+                resp2 = await client.get(
+                    f"https://api.line.me/v2/bot/group/{group_id}/member/{user_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                if resp2.status_code == 200:
+                    return resp2.json()
+    except:
+        pass
+    return None
+
+
+async def line_get_group_member_profile(bot_id: str, group_id: str, user_id: str) -> Optional[Dict]:
+    """ดึงโปรไฟล์สมาชิกในกลุ่ม — ใช้ได้แม้ไม่ได้ add เพื่อน"""
     env = get_env_vars()
     token = env.get(bot_id, {}).get("token", "")
     if not token:
@@ -936,7 +965,7 @@ async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
-                f"https://api.line.me/v2/bot/profile/{user_id}",
+                f"https://api.line.me/v2/bot/group/{group_id}/member/{user_id}",
                 headers={"Authorization": f"Bearer {token}"},
             )
             if resp.status_code == 200:
@@ -944,6 +973,88 @@ async def line_get_user_profile(bot_id: str, user_id: str) -> Optional[Dict]:
     except:
         pass
     return None
+
+
+async def line_get_group_member_ids(bot_id: str, group_id: str) -> List[str]:
+    """ดึง user ID ของสมาชิกทุกคนในกลุ่ม — pagination อัตโนมัติ"""
+    env = get_env_vars()
+    token = env.get(bot_id, {}).get("token", "")
+    if not token:
+        return []
+    all_ids = []
+    continuation_token = None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for _ in range(20):  # max 20 pages (ป้องกัน infinite loop)
+                url = f"https://api.line.me/v2/bot/group/{group_id}/members/ids"
+                params = {}
+                if continuation_token:
+                    params["start"] = continuation_token
+                resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+                if resp.status_code != 200:
+                    logger.warning(f"[GROUP-SCAN] Failed to get member IDs: HTTP {resp.status_code}")
+                    break
+                data = resp.json()
+                member_ids = data.get("memberIds", [])
+                all_ids.extend(member_ids)
+                continuation_token = data.get("next")
+                if not continuation_token:
+                    break
+    except Exception as e:
+        logger.error(f"[GROUP-SCAN] Error getting member IDs: {e}")
+    return all_ids
+
+
+# ==================== Group Scan Intelligence ====================
+# สแกนสมาชิกในกลุ่มทั้งหมด — จำทุกคนทันทีที่บอทเข้ากลุ่ม/ได้รับข้อความ
+
+_scanned_groups: Dict[str, float] = {}  # group_key → last_scan_timestamp
+GROUP_SCAN_INTERVAL = 3600  # rescan ทุก 1 ชั่วโมง
+
+
+async def scan_group_members(bot_id: str, group_id: str, force: bool = False) -> int:
+    """สแกนสมาชิกทุกคนในกลุ่ม → จำทุกคนผ่าน PeopleIntelligence
+    Returns: จำนวนคนที่เรียนรู้ใหม่"""
+    scan_key = f"{bot_id}:{group_id}"
+    now = time.time()
+
+    # เช็คว่าเพิ่งสแกนไปหรือยัง (ป้องกันสแกนซ้ำถี่เกินไป)
+    if not force and scan_key in _scanned_groups:
+        elapsed = now - _scanned_groups[scan_key]
+        if elapsed < GROUP_SCAN_INTERVAL:
+            return 0
+
+    _scanned_groups[scan_key] = now
+    logger.info(f"[GROUP-SCAN] Starting scan: bot={bot_id}, group={group_id[:15]}...")
+
+    # ดึง member IDs ทั้งหมด
+    member_ids = await line_get_group_member_ids(bot_id, group_id)
+    if not member_ids:
+        logger.warning(f"[GROUP-SCAN] No members found or API failed for group {group_id[:15]}")
+        return 0
+
+    new_learned = 0
+    for uid in member_ids:
+        # ดึงโปรไฟล์สมาชิกผ่าน Group API (ไม่ต้อง add เพื่อน!)
+        profile = await line_get_group_member_profile(bot_id, group_id, uid)
+        display_name = profile.get("displayName", "") if profile else ""
+
+        # จำคนทันที
+        person_data = await people.identify(uid, bot_id, display_name)
+        if person_data.get("first_seen") != "seed" and person_data.get("first_seen") != "registry":
+            new_learned += 1
+
+        # ลงทะเบียนอัตโนมัติ (non-blocking)
+        if display_name:
+            asyncio.ensure_future(auto_register_user(bot_id, uid, display_name, "group_scan"))
+
+        # Rate limit — ไม่ยิง API ถี่เกินไป
+        await asyncio.sleep(0.1)
+
+    logger.info(f"[GROUP-SCAN] Done: bot={bot_id}, group={group_id[:15]}, "
+                f"total_members={len(member_ids)}, new_learned={new_learned}, "
+                f"total_known={people.total_known}")
+    return new_learned
 
 
 async def line_reply(bot_id: str, reply_token: str, text: str, user_id: str = ""):
@@ -1191,6 +1302,10 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
             # ตอบต้อนรับ (ใช้ข้อความสุดท้าย)
             if joined_members and reply_token_join:
                 await line_reply(bot_id, reply_token_join, welcome, user_id=joined_members[-1].get("userId", ""))
+
+            # Group Scan — สแกนสมาชิกทั้งกลุ่มเมื่อมีคนใหม่เข้า (background)
+            if group_id_join:
+                asyncio.ensure_future(scan_group_members(bot_id, group_id_join))
             continue
 
         # จัดการ follow event — ลงทะเบียนอัตโนมัติ + ต้อนรับ
@@ -1246,13 +1361,18 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
         bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", "")
         is_group = source_type == "group"
 
-        # ดึง display name + จำคนทันที
-        profile = await line_get_user_profile(bot_id, user_id)
+        # ดึง display name + จำคนทันที (ใช้ group API ถ้าอยู่ในกลุ่ม)
+        profile = await line_get_user_profile(bot_id, user_id, group_id=group_id)
         display_name = profile.get("displayName", "ท่าน") if profile else "ท่าน"
         await people.identify(user_id, bot_id, display_name)
 
         # ลงทะเบียนอัตโนมัติ (non-blocking)
         asyncio.ensure_future(auto_register_user(bot_id, user_id, display_name, source_type))
+
+        # Group Scan Intelligence — สแกนสมาชิกทั้งกลุ่มเมื่อได้รับข้อความจากกลุ่ม
+        # ทำ background เพื่อไม่ให้ช้า + ป้องกันสแกนซ้ำด้วย interval
+        if is_group and group_id:
+            asyncio.ensure_future(scan_group_members(bot_id, group_id))
 
         # เรียกสมอง AI — ถ้าอยู่ในกลุ่ม เพิ่ม context ให้ AI ตัดสินใจเองว่าจะตอบ
         group_context = ""
@@ -1394,13 +1514,14 @@ async def startup_sync_people():
 async def health():
     return {
         "status": "healthy",
-        "version": "2.11.0-people-intelligence",
+        "version": "2.12.0-group-scan-intelligence",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
         "fallback": "Gemini Flash",
         "database": "Airtable",
         "people_known": people.total_known,
+        "groups_scanned": len(_scanned_groups),
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
     }
@@ -1498,6 +1619,56 @@ async def api_deploy(request: Request):
         raise
     except Exception as e:
         logger.error(f"[DEPLOY] Error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/people")
+async def api_people():
+    """ดูคนที่ระบบรู้จักทั้งหมด — สำหรับ debug / monitoring"""
+    people_list = []
+    for uid, info in people._people.items():
+        people_list.append({
+            "user_id": uid[:15] + "...",
+            "name": info.get("name", ""),
+            "nickname": info.get("nickname", ""),
+            "role": info.get("role", "unknown"),
+            "is_management": info.get("is_management", False),
+            "source": info.get("first_seen", ""),
+            "bots": list(info.get("bots_seen", set())),
+        })
+    return {
+        "total": len(people_list),
+        "groups_scanned": len(_scanned_groups),
+        "people": sorted(people_list, key=lambda x: (not x["is_management"], x["name"])),
+    }
+
+
+@app.post("/api/scan-group")
+async def api_scan_group(request: Request):
+    """สั่งสแกนสมาชิกในกลุ่มด้วยมือ — ใช้เมื่อต้องการ force rescan"""
+    try:
+        body = await request.json()
+        secret = body.get("secret", "")
+        if secret != DEPLOY_SECRET:
+            raise HTTPException(status_code=403, detail="Invalid secret")
+
+        bot_id = body.get("bot_id")
+        group_id = body.get("group_id")
+        if not bot_id or not group_id:
+            raise HTTPException(status_code=400, detail="Missing bot_id or group_id")
+
+        new_count = await scan_group_members(bot_id, group_id, force=True)
+        return {
+            "status": "scanned",
+            "bot": bot_id,
+            "group": group_id[:15] + "...",
+            "new_learned": new_count,
+            "total_known": people.total_known,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SCAN-GROUP] Error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
