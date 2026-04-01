@@ -473,31 +473,33 @@ class PeopleIntelligence:
         return members
 
     def get_group_context_for_ai(self, group_id: str) -> str:
-        """สร้าง context สมาชิกกลุ่มสำหรับ AI — บอทรู้ว่าใครอยู่ในกลุ่มนี้ + คนทั้งหมดที่รู้จัก"""
+        """สร้าง context สมาชิกกลุ่มสำหรับ AI — ห้ามบอกตัวเลข ห้ามอธิบายระบบ"""
         members = self.get_group_members(group_id)
-        # สร้าง context จากสมาชิกในกลุ่ม
+        # รายชื่อคนที่รู้จักในกลุ่ม
         group_text = ""
         if members:
             member_list = []
-            for m in members[:30]:
+            for m in members[:50]:
                 role_str = f" ({m['role']})" if m['role'] != 'unknown' else ""
                 member_list.append(f"{m['name']}{role_str}")
-            group_text = f"\n[สมาชิกในกลุ่มนี้ {len(members)} คน] " + ", ".join(member_list)
+            group_text = "\n[คนที่รู้จักในกลุ่ม] " + ", ".join(member_list)
 
-        # เพิ่ม context คนทั้งหมดที่รู้จัก (จาก Airtable + seed + ทุกกลุ่ม)
-        total = len(self._people)
-        # แสดงทีมบริหารที่รู้จัก
-        mgmt_names = []
+        # รวมคนที่รู้จักทั้งหมดจากทุกแหล่ง (ไม่บอกตัวเลข)
+        all_names = []
         for uid, info in self._people.items():
-            if info.get("is_management"):
-                mgmt_names.append(info.get("nickname") or info.get("name", ""))
-        mgmt_text = ", ".join(set(mgmt_names)) if mgmt_names else "ยังไม่มีข้อมูล"
+            name = info.get("nickname") or info.get("display_name") or info.get("name", "")
+            if name and name != "ท่าน":
+                role_str = f" ({info['role']})" if info.get('role', 'unknown') != 'unknown' else ""
+                all_names.append(f"{name}{role_str}")
+        # แสดงรายชื่อทั้งหมด (max 100)
+        all_text = "\n[คนที่รู้จักทั้งหมดจากทุกกลุ่มและทุกแหล่ง] " + ", ".join(all_names[:100]) if all_names else ""
 
         return (
             group_text
-            + f"\n[ฐานข้อมูลคนที่รู้จักทั้งหมด {total} คน] ทีมบริหาร: {mgmt_text}"
-            + "\nคุณจำทุกคนได้ เรียกชื่อได้เลย ค้นหาคนตามชื่อได้ ประสานงานข้ามคนข้ามกลุ่มได้"
-            + "\nถ้าถูกถามว่ารู้จักใคร ให้ตอบจากข้อมูลที่มีทั้งหมด ไม่ใช่แค่ในกลุ่มนี้"
+            + all_text
+            + "\nกฎเด็ดขาด: ห้ามบอกตัวเลขว่ารู้จักกี่คน ห้ามบอกว่ายังไม่ได้รับรายชื่อ ห้ามอธิบายระบบภายใน"
+            + "\nถ้าถูกถามว่ารู้จักใคร → บอกชื่อคนที่รู้จักจริงๆ ไปเลย ไม่ต้องบอกจำนวน"
+            + "\nถ้าค้นหาชื่อใครไม่เจอ → ถามชื่อเต็มเพื่อหาให้ ไม่ต้องอธิบายว่าทำไมหาไม่เจอ"
         )
 
     async def learn_from_staff_registry(self, records: List[Dict]):
@@ -828,32 +830,41 @@ async def airtable_get_user_profile(user_id: str) -> Optional[Dict]:
     return None
 
 
+BOT_TO_LINE_FIELD = {
+    "phrae555": "LINE_phrae555",
+    "930pchss": "LINE_aifruits",
+    "aiphrae": "LINE_phraecopilot",
+    "jewelry": "LINE_jewelry",
+    "execcopilot": "LINE_execcopilot",
+}
+
 async def auto_register_user(bot_id: str, user_id: str, display_name: str, source_type: str = "user"):
-    """ลงทะเบียนผู้ใช้อัตโนมัติ — เรียกเมื่อ follow หรือทักในกลุ่มครั้งแรก"""
+    """ลงทะเบียนผู้ใช้อัตโนมัติ — บันทึก LINE ID ลงฟิลด์ของบอทนั้นๆ"""
     cache_key = f"{bot_id}:{user_id}"
     if cache_key in _registered_users:
         return  # ลงทะเบียนแล้ว
 
     _registered_users[cache_key] = True
     bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", bot_id)
+    line_field = BOT_TO_LINE_FIELD.get(bot_id, f"LINE_{bot_id}")
 
     try:
-        # 1. บันทึกลง Airtable UnifiedProfiles
+        # 1. บันทึกลง Airtable UnifiedProfiles — ใช้ฟิลด์ LINE ID ของบอทนั้นๆ
         if AIRTABLE_PAT:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # เช็คว่ามีอยู่แล้วหรือไม่
+                # เช็คว่ามีอยู่แล้วหรือไม่ — ค้นทุกฟิลด์ LINE ID
                 check_resp = await client.get(
                     f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/UnifiedProfiles",
                     headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
                     params={
-                        "filterByFormula": f"{{LINE_UserID}}='{user_id}'",
+                        "filterByFormula": f"{{{line_field}}}='{user_id}'",
                         "maxRecords": 1,
                     },
                 )
                 existing = check_resp.json().get("records", []) if check_resp.status_code == 200 else []
 
                 if not existing:
-                    # สร้าง record ใหม่
+                    # สร้าง record ใหม่ — ใส่ LINE ID ในฟิลด์ของบอทนั้น
                     await client.post(
                         f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/UnifiedProfiles",
                         headers={
@@ -863,34 +874,31 @@ async def auto_register_user(bot_id: str, user_id: str, display_name: str, sourc
                         json={
                             "records": [{
                                 "fields": {
-                                    "LINE_UserID": user_id,
+                                    line_field: user_id,
                                     "DisplayName": display_name,
                                     "RegisteredVia": bot_name,
-                                    "SourceType": source_type,
-                                    "Status": "AUTO_REGISTERED",
-                                    "RegisteredDate": time.strftime("%Y-%m-%d %H:%M"),
+                                    "UserType": source_type,
+                                    "Status": "Active",
                                 }
                             }]
                         },
                     )
-                    logger.info(f"[AUTO-REG] New user registered: {display_name} ({user_id}) via {bot_name}")
+                    logger.info(f"[AUTO-REG] New user: {display_name} ({user_id[:10]}...) via {bot_name} → {line_field}")
                 else:
-                    # อัพเดท bot ที่ใช้ล่าสุด
+                    # อัพเดท — เพิ่ม LINE ID ของบอทนี้ + อัพเดทชื่อ
                     rec_id = existing[0]["id"]
+                    update_fields = {line_field: user_id}
+                    if display_name and display_name != "ท่าน":
+                        update_fields["DisplayName"] = display_name
                     await client.patch(
                         f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/UnifiedProfiles/{rec_id}",
                         headers={
                             "Authorization": f"Bearer {AIRTABLE_PAT}",
                             "Content-Type": "application/json",
                         },
-                        json={
-                            "fields": {
-                                "LastActiveBot": bot_name,
-                                "LastSeen": time.strftime("%Y-%m-%d %H:%M"),
-                            }
-                        },
+                        json={"fields": update_fields},
                     )
-                    logger.info(f"[AUTO-REG] Existing user updated: {display_name} via {bot_name}")
+                    logger.info(f"[AUTO-REG] Updated: {display_name} via {bot_name}")
 
     except Exception as e:
         logger.warning(f"Auto-register error: {e}")
@@ -1472,15 +1480,19 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
             members_context = people.get_group_context_for_ai(group_id) if group_id else ""
             group_context = (
                 "\n\n[บริบทกลุ่มแชท] คุณเป็น AI ที่มีสมองจริง ทำงานเป็นสมาชิกทีมในกลุ่มนี้ "
-                "คุณต้องตอบทุกข้อความที่เข้ามาอย่างฉลาดและเป็นธรรมชาติ เหมือนเพื่อนร่วมงานจริงๆ:\n"
+                "คุณต้องตอบทุกข้อความอย่างฉลาดและเป็นธรรมชาติ เหมือนเพื่อนร่วมงานจริงๆ:\n"
                 "- ตอบทุกข้อความ ทุกคำถาม ทุกคนที่ทักมา ไม่เลือกปฏิบัติ\n"
-                "- คุณรู้จักทุกคนในกลุ่ม เรียกชื่อได้เลย ช่วยประสานงานข้ามคนได้\n"
+                "- เรียกชื่อคนที่รู้จักได้เลย ช่วยประสานงานข้ามคนได้\n"
                 "- ถ้าใครถามอะไร ตอบด้วยความรู้จริง ใช้สมอง AI วิเคราะห์ให้\n"
-                "- ถ้าไม่รู้ข้อมูลเฉพาะ ให้ค้นหาหรือบอกตรงๆ ว่าจะหาให้\n"
                 "- พูดสั้นกระชับ 1-3 ประโยค เป็นธรรมชาติ ไม่เยิ่นเย้อ\n"
-                "- ห้ามอธิบายว่าตัวเองเป็น AI ทำงานยังไง จำได้กี่คน — แค่ทำงานเลย\n"
                 "- ถ้ามีคนทักทาย ก็ทักกลับสั้นๆ อบอุ่น เหมือนเพื่อนร่วมงาน\n"
-                "- ข้อยกเว้นเดียวที่ไม่ต้องตอบ: สติกเกอร์ หรือ emoji เฉยๆ โดยไม่มีข้อความ → ตอบ [SKIP]"
+                "- ข้อยกเว้นเดียวที่ไม่ต้องตอบ: สติกเกอร์/emoji เฉยๆ → ตอบ [SKIP]\n\n"
+                "กฎเด็ดขาดที่ห้ามฝ่าฝืนเด็ดขาด:\n"
+                "- ห้ามพูดว่า 'น้องเห็นแค่...คน' 'น้องรู้จัก...คน' 'น้องยังไม่ได้รับรายชื่อ' 'น้องจำได้แค่' ห้ามบอกตัวเลข\n"
+                "- ห้ามอธิบายว่าระบบทำงานยังไง ดึงข้อมูลจากไหน ต้องรับรายชื่ออะไร\n"
+                "- ห้ามแนะนำให้ส่งรายชื่อมา ห้ามอธิบายกลไกการจำคน\n"
+                "- ถ้าถูกถามว่ารู้จักใคร → บอกชื่อคนที่รู้จักไปเลย ไม่ต้องนับ\n"
+                "- ถ้าไม่รู้จักคนที่ถาม → 'ช่วยบอกชื่อเต็มให้น้องหน่อยนะคะ' แค่นั้น\n"
                 + members_context
             )
 
@@ -1604,7 +1616,14 @@ async def startup_sync_people():
     except Exception as e:
         logger.warning(f"[STARTUP] StaffRegistry sync error: {e}")
 
-    # 2. โหลด UnifiedProfiles จาก Airtable — เกษตรกร ลูกค้า ทุกคนที่เคยลงทะเบียน
+    # 2. โหลด UnifiedProfiles จาก Airtable — ใช้ฟิลด์ LINE ID ของแต่ละบอท
+    LINE_FIELD_TO_BOT = {
+        "LINE_phrae555": "phrae555",
+        "LINE_aifruits": "930pchss",
+        "LINE_execcopilot": "execcopilot",
+        "LINE_phraecopilot": "aiphrae",
+        "LINE_jewelry": "jewelry",
+    }
     try:
         if AIRTABLE_PAT:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1625,17 +1644,65 @@ async def startup_sync_people():
                     data = resp.json()
                     for record in data.get("records", []):
                         fields = record.get("fields", {})
-                        uid = fields.get("LINE_UserID", "")
                         name = fields.get("DisplayName", "")
-                        if uid and uid.startswith("U"):
-                            await people.identify(uid, fields.get("RegisteredVia", "unknown"), name)
-                            total_loaded += 1
+                        user_type = fields.get("UserType", "unknown")
+                        notes = fields.get("Notes", "")
+                        # โหลดทุก LINE ID จากทุกบอท
+                        for field_name, bot_id_map in LINE_FIELD_TO_BOT.items():
+                            uid = fields.get(field_name, "")
+                            if uid and uid.startswith("U"):
+                                await people.identify(uid, bot_id_map, name)
+                                # อัพเดท role ถ้ามี
+                                if user_type == "Staff" and notes:
+                                    await people.update_role(uid, notes, is_management=True)
+                                total_loaded += 1
                     offset = data.get("offset")
                     if not offset:
                         break
-                logger.info(f"[STARTUP] Airtable UnifiedProfiles loaded: {total_loaded} users, total known: {people.total_known}")
+                logger.info(f"[STARTUP] Airtable UnifiedProfiles loaded: {total_loaded} LINE IDs, total known: {people.total_known}")
     except Exception as e:
-        logger.warning(f"[STARTUP] Airtable load error: {e}")
+        logger.warning(f"[STARTUP] Airtable UnifiedProfiles error: {e}")
+
+    # 2.5 โหลด Farmers table — เกษตรกรที่มี LINE_UserID
+    try:
+        if AIRTABLE_PAT:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                offset = None
+                farmer_loaded = 0
+                for _ in range(50):
+                    params = {"pageSize": 100}
+                    if offset:
+                        params["offset"] = offset
+                    resp = await client.get(
+                        f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/Farmers",
+                        headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
+                        params=params,
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(f"[STARTUP] Airtable Farmers failed: HTTP {resp.status_code}")
+                        break
+                    data = resp.json()
+                    for record in data.get("records", []):
+                        fields = record.get("fields", {})
+                        name = fields.get("Name", "")
+                        uid = fields.get("LINE_UserID", "")
+                        area = fields.get("Area", "")
+                        fruit = fields.get("FruitType", "")
+                        if name:
+                            if uid and uid.startswith("U"):
+                                await people.identify(uid, "system", name)
+                                farmer_loaded += 1
+                            else:
+                                # เกษตรกรที่ไม่มี LINE ID — จำชื่อไว้ค้นหาได้
+                                fake_id = f"farmer_{record['id']}"
+                                await people.identify(fake_id, "airtable", name)
+                                farmer_loaded += 1
+                    offset = data.get("offset")
+                    if not offset:
+                        break
+                logger.info(f"[STARTUP] Airtable Farmers loaded: {farmer_loaded} farmers, total known: {people.total_known}")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Airtable Farmers error: {e}")
 
     # 3. สแกนกลุ่มที่เคยรู้จัก (จาก env var SCAN_GROUP_IDS)
     scan_groups_env = os.getenv("SCAN_GROUP_IDS", "")
@@ -1658,7 +1725,7 @@ async def startup_sync_people():
 async def health():
     return {
         "status": "healthy",
-        "version": "2.13.2-full-people-visibility",
+        "version": "2.14.0-fixed-people-sync",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
