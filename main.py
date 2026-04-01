@@ -390,27 +390,37 @@ _SEED_MANAGEMENT = {
 
 
 class PeopleIntelligence:
-    """ระบบจำคนอัจฉริยะ — cache ข้ามบอท + auto-learn จากทุก interaction"""
+    """ระบบจำคนอัจฉริยะ — cache ข้ามบอท + auto-learn จากทุก interaction + จำสมาชิกกลุ่ม"""
 
     def __init__(self):
-        # user_id → {name, nickname, role, is_management, display_name, first_seen, bots_seen: set}
+        # user_id → {name, nickname, role, is_management, display_name, first_seen, bots_seen: set, groups: set}
         self._people: Dict[str, Dict] = {}
+        self._groups: Dict[str, set] = {}  # group_id → set of user_ids (สมาชิกในกลุ่ม)
         self._lock = asyncio.Lock()
         # โหลด seed data
         for uid, info in _SEED_MANAGEMENT.items():
-            self._people[uid] = {**info, "display_name": info["name"], "first_seen": "seed", "bots_seen": set()}
+            self._people[uid] = {**info, "display_name": info["name"], "first_seen": "seed", "bots_seen": set(), "groups": set()}
 
-    async def identify(self, user_id: str, bot_id: str, display_name: str = "") -> Dict:
-        """จำคนทันที — ถ้ารู้จักคืนข้อมูลเลย ถ้าไม่รู้จักเรียนรู้ทันที"""
+    async def identify(self, user_id: str, bot_id: str, display_name: str = "", group_id: str = "") -> Dict:
+        """จำคนทันที — ถ้ารู้จักคืนข้อมูลเลย ถ้าไม่รู้จักเรียนรู้ทันที + จำว่าอยู่กลุ่มไหน"""
         async with self._lock:
             if user_id in self._people:
                 person = self._people[user_id]
                 person["bots_seen"].add(bot_id)
-                if display_name and not person.get("display_name"):
+                if display_name and (not person.get("display_name") or person["display_name"] == "ท่าน"):
                     person["display_name"] = display_name
+                    # อัพเดทชื่อด้วยถ้ายังไม่มี
+                    if person.get("name", "") in ("ท่าน", ""):
+                        person["name"] = display_name
+                    if not person.get("nickname"):
+                        person["nickname"] = display_name
+                if group_id:
+                    person.setdefault("groups", set()).add(group_id)
+                    self._groups.setdefault(group_id, set()).add(user_id)
                 return dict(person)
 
             # คนใหม่ — เรียนรู้ทันที
+            groups_set = {group_id} if group_id else set()
             new_person = {
                 "name": display_name or "ท่าน",
                 "nickname": display_name or "",
@@ -419,10 +429,53 @@ class PeopleIntelligence:
                 "display_name": display_name,
                 "first_seen": datetime.now().isoformat(),
                 "bots_seen": {bot_id},
+                "groups": groups_set,
             }
             self._people[user_id] = new_person
+            if group_id:
+                self._groups.setdefault(group_id, set()).add(user_id)
             logger.info(f"[PEOPLE] New person learned: {display_name} ({user_id[:10]}...) via {bot_id}")
             return dict(new_person)
+
+    def search_by_name(self, query: str) -> List[Dict]:
+        """ค้นหาคนตามชื่อ — ใช้สำหรับประสานงาน เช่น 'หาคุณแพม'"""
+        query_lower = query.lower().strip()
+        results = []
+        for uid, info in self._people.items():
+            name = (info.get("name", "") or "").lower()
+            nickname = (info.get("nickname", "") or "").lower()
+            display = (info.get("display_name", "") or "").lower()
+            if query_lower in name or query_lower in nickname or query_lower in display:
+                results.append({"user_id": uid, **info})
+        return results
+
+    def get_group_members(self, group_id: str) -> List[Dict]:
+        """ดึงรายชื่อสมาชิกทั้งหมดในกลุ่ม — บอทรู้ว่าใครอยู่กลุ่มเดียวกัน"""
+        member_ids = self._groups.get(group_id, set())
+        members = []
+        for uid in member_ids:
+            info = self._people.get(uid, {})
+            members.append({
+                "user_id": uid,
+                "name": info.get("display_name") or info.get("name", ""),
+                "role": info.get("role", "unknown"),
+            })
+        return members
+
+    def get_group_context_for_ai(self, group_id: str) -> str:
+        """สร้าง context สมาชิกกลุ่มสำหรับ AI — บอทรู้ว่าใครอยู่ในกลุ่มนี้"""
+        members = self.get_group_members(group_id)
+        if not members:
+            return ""
+        member_list = []
+        for m in members[:30]:  # จำกัด 30 คนไม่ให้ context ยาวเกิน
+            role_str = f" ({m['role']})" if m['role'] != 'unknown' else ""
+            member_list.append(f"{m['name']}{role_str}")
+        return (
+            f"\n[สมาชิกในกลุ่มนี้ {len(members)} คน] "
+            + ", ".join(member_list)
+            + "\nคุณจำทุกคนในกลุ่มนี้ได้ เรียกชื่อได้เลย สามารถประสานงานข้ามคนในกลุ่มได้"
+        )
 
     async def learn_from_staff_registry(self, records: List[Dict]):
         """Sync จาก StaffRegistry — อัพเดทข้อมูลทั้งหมด"""
@@ -1040,7 +1093,7 @@ async def scan_group_members(bot_id: str, group_id: str, force: bool = False) ->
         display_name = profile.get("displayName", "") if profile else ""
 
         # จำคนทันที
-        person_data = await people.identify(uid, bot_id, display_name)
+        person_data = await people.identify(uid, bot_id, display_name, group_id=group_id)
         if person_data.get("first_seen") != "seed" and person_data.get("first_seen") != "registry":
             new_learned += 1
 
@@ -1281,7 +1334,7 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
                 # ดึงโปรไฟล์ + จำคนทันที
                 member_profile = await line_get_user_profile(bot_id, member_uid)
                 member_name = member_profile.get("displayName", "คุณ") if member_profile else "คุณ"
-                person_data = await people.identify(member_uid, bot_id, member_name)
+                person_data = await people.identify(member_uid, bot_id, member_name, group_id=group_id_join)
                 asyncio.ensure_future(auto_register_user(bot_id, member_uid, member_name, "group_join"))
 
                 # สร้างข้อความต้อนรับอัจฉริยะ
@@ -1364,7 +1417,7 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
         # ดึง display name + จำคนทันที (ใช้ group API ถ้าอยู่ในกลุ่ม)
         profile = await line_get_user_profile(bot_id, user_id, group_id=group_id)
         display_name = profile.get("displayName", "ท่าน") if profile else "ท่าน"
-        await people.identify(user_id, bot_id, display_name)
+        await people.identify(user_id, bot_id, display_name, group_id=group_id)
 
         # ลงทะเบียนอัตโนมัติ (non-blocking)
         asyncio.ensure_future(auto_register_user(bot_id, user_id, display_name, source_type))
@@ -1377,15 +1430,19 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
         # เรียกสมอง AI — ถ้าอยู่ในกลุ่ม เพิ่ม context ให้ AI ตัดสินใจเองว่าจะตอบ
         group_context = ""
         if is_group:
+            # สร้าง context รายชื่อสมาชิกในกลุ่ม — บอทรู้จักทุกคน
+            members_context = people.get_group_context_for_ai(group_id) if group_id else ""
             group_context = (
                 "\n\n[บริบทกลุ่มแชท] คุณอยู่ในกลุ่มแชท LINE ของทีมงาน "
                 "ให้วิเคราะห์ข้อความที่เข้ามาด้วยสมอง AI ของคุณ:\n"
                 "- ถ้าข้อความเกี่ยวข้องกับงานของคุณ หรือเป็นคำถาม หรือต้องการความช่วยเหลือ → ตอบตามปกติ\n"
                 "- ถ้ามีคนเรียกชื่อคุณ หรือพูดถึงบทบาทของคุณ → ตอบทันที\n"
                 "- ถ้าเป็นคนใหม่ทักมาครั้งแรก → ต้อนรับและแนะนำตัว\n"
+                "- ถ้ามีคนถามถึงคนอื่นในกลุ่ม → ช่วยประสานงาน เรียกชื่อเค้าได้เลย\n"
                 "- ถ้าเป็นแค่คำทักทายทั่วไประหว่างคนในกลุ่ม สติกเกอร์ หรือ emoji → ตอบ [SKIP] เพียงอย่างเดียว (ห้ามพูดอื่น)\n"
                 "- ถ้าข้อความไม่เกี่ยวข้องกับงานของคุณเลย → ตอบ [SKIP] เพียงอย่างเดียว\n"
                 "สำคัญ: ถ้าตัดสินใจไม่ตอบ ให้ตอบ [SKIP] เท่านั้น ห้ามมีข้อความอื่น"
+                + members_context
             )
 
         try:
@@ -1514,7 +1571,7 @@ async def startup_sync_people():
 async def health():
     return {
         "status": "healthy",
-        "version": "2.12.0-group-scan-intelligence",
+        "version": "2.12.1-group-memory-intelligence",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
@@ -1635,11 +1692,35 @@ async def api_people():
             "is_management": info.get("is_management", False),
             "source": info.get("first_seen", ""),
             "bots": list(info.get("bots_seen", set())),
+            "groups": len(info.get("groups", set())),
         })
     return {
         "total": len(people_list),
         "groups_scanned": len(_scanned_groups),
+        "groups_tracked": len(people._groups),
         "people": sorted(people_list, key=lambda x: (not x["is_management"], x["name"])),
+    }
+
+
+@app.get("/api/people/search")
+async def api_people_search(q: str = ""):
+    """ค้นหาคนตามชื่อ — เช่น /api/people/search?q=แพม"""
+    if not q:
+        return {"error": "Missing query parameter ?q="}
+    results = people.search_by_name(q)
+    return {
+        "query": q,
+        "found": len(results),
+        "results": [
+            {
+                "name": r.get("name", ""),
+                "nickname": r.get("nickname", ""),
+                "role": r.get("role", "unknown"),
+                "is_management": r.get("is_management", False),
+                "groups": len(r.get("groups", set())),
+            }
+            for r in results
+        ],
     }
 
 
