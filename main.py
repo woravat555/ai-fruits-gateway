@@ -360,34 +360,160 @@ class ConversationMemory:
 # Global conversation memory instance
 conversation_memory = ConversationMemory()
 
-# ==================== Staff Recognition ====================
-# ทีมบริหารที่มีสิทธิ์เข้าถึงข้อมูลลับ — ค้นหาจาก LINE user ID
-MANAGEMENT_TEAM = {
-    "U2c6f36e1a490028e4931cce1bc246b70": {"name": "วรวัจน์", "role": "CEO/Founder"},
-    "U4e6368ef91c7be69efe017c187181625": {"name": "วรวัจน์", "role": "CEO/Founder"},
-    "U507d4449250cce0cd23b0f51465a7b6a": {"name": "วรวัจน์", "role": "CEO/Founder"},
-    "Ucebe552553cd5897128d112bd2611e07": {"name": "Game", "role": "IT Manager/COO"},
-    "U80cce47038ca3e9fe8ce28bcb8230b94": {"name": "Game", "role": "IT Manager/COO"},
-    "U2808964fb15a46fed7156fbdf421b6dd": {"name": "Baipare", "role": "Marketing"},
-    "U7640b070e595c168fed2254fc6d9d3fa": {"name": "Baipare", "role": "Marketing"},
-    "U90b5bc2c98532383d958117761f0a10e": {"name": "Wan", "role": "Coordinator"},
-    "Ucacc2f3f13c2b59a67b9d1d115f7a653": {"name": "Wan", "role": "Coordinator"},
-    "Ude3f7216df72dfeb74e182905be2cab1": {"name": "Som", "role": "Production"},
-    "Ub1ec883267da395546ddd12fabbffe20": {"name": "Som", "role": "Production"},
-    "Uf1a7673c4737ad7dd851297a413eabc9": {"name": "Pam", "role": "Sales"},
+# ==================== Unified People Intelligence ====================
+# ระบบจำคนอัจฉริยะ — รู้จักทุกคนข้ามบอท ตั้งแต่วินาทีแรกที่เข้ามา
+
+# ทีมบริหาร (seed data — ข้อมูลเริ่มต้นที่รู้แน่นอน)
+_SEED_MANAGEMENT = {
+    "U2c6f36e1a490028e4931cce1bc246b70": {"name": "วรวัจน์", "nickname": "CEO วรวัจน์", "role": "CEO/Founder", "is_management": True},
+    "U4e6368ef91c7be69efe017c187181625": {"name": "วรวัจน์", "nickname": "CEO วรวัจน์", "role": "CEO/Founder", "is_management": True},
+    "U507d4449250cce0cd23b0f51465a7b6a": {"name": "วรวัจน์", "nickname": "CEO วรวัจน์", "role": "CEO/Founder", "is_management": True},
+    "Ucebe552553cd5897128d112bd2611e07": {"name": "Game", "nickname": "เกมส์", "role": "IT Manager/COO", "is_management": True},
+    "U80cce47038ca3e9fe8ce28bcb8230b94": {"name": "Game", "nickname": "เกมส์", "role": "IT Manager/COO", "is_management": True},
+    "U2808964fb15a46fed7156fbdf421b6dd": {"name": "Baipare", "nickname": "ใบแพร", "role": "Marketing", "is_management": True},
+    "U7640b070e595c168fed2254fc6d9d3fa": {"name": "Baipare", "nickname": "ใบแพร", "role": "Marketing", "is_management": True},
+    "U90b5bc2c98532383d958117761f0a10e": {"name": "Wan", "nickname": "วรรณ", "role": "Coordinator", "is_management": True},
+    "Ucacc2f3f13c2b59a67b9d1d115f7a653": {"name": "Wan", "nickname": "วรรณ", "role": "Coordinator", "is_management": True},
+    "Ude3f7216df72dfeb74e182905be2cab1": {"name": "Som", "nickname": "ส้ม อัญมณี", "role": "Production", "is_management": True},
+    "Ub1ec883267da395546ddd12fabbffe20": {"name": "Som", "nickname": "ส้ม อัญมณี", "role": "Production", "is_management": True},
+    "Uf1a7673c4737ad7dd851297a413eabc9": {"name": "Pam", "nickname": "แพม", "role": "Sales", "is_management": True},
+    # ทีมสนาม
+    "Ua505ea00528a7464a725dd1b1004c705": {"name": "สจ.โอ", "nickname": "สจ.โอ", "role": "Production Coordinator วังชิ้น", "is_management": False},
+    "U161bfb57a7467959b15b3d45f7449ada": {"name": "สจ.โอ", "nickname": "สจ.โอ", "role": "Production Coordinator วังชิ้น", "is_management": False},
+    "U546d02954d15527dad2ddce6e39b5e59": {"name": "สจ.โอ", "nickname": "สจ.โอ", "role": "Production Coordinator วังชิ้น", "is_management": False},
+    "U5bb4a14eadeaed042bd6cab933e9317f": {"name": "ธิติพร", "nickname": "ธิติพร", "role": "CC all reports", "is_management": False},
+    "U53497df6556e486f0fd8267abb70fbb0": {"name": "ธิติพร", "nickname": "ธิติพร", "role": "CC all reports", "is_management": False},
+    "Uba34968968bcdc74fe99355717f5b82f": {"name": "ธิติพร", "nickname": "ธิติพร", "role": "CC all reports", "is_management": False},
+    "Ue3da296d87f90d110fe5fc7a071f43fb": {"name": "อุ๋ย", "nickname": "aui", "role": "Accounting", "is_management": False},
+    "U95169bc257fd4436e3c5c59c0fcb4d47": {"name": "อุ๋ย", "nickname": "aui", "role": "Accounting", "is_management": False},
 }
 
+
+class PeopleIntelligence:
+    """ระบบจำคนอัจฉริยะ — cache ข้ามบอท + auto-learn จากทุก interaction"""
+
+    def __init__(self):
+        # user_id → {name, nickname, role, is_management, display_name, first_seen, bots_seen: set}
+        self._people: Dict[str, Dict] = {}
+        self._lock = asyncio.Lock()
+        # โหลด seed data
+        for uid, info in _SEED_MANAGEMENT.items():
+            self._people[uid] = {**info, "display_name": info["name"], "first_seen": "seed", "bots_seen": set()}
+
+    async def identify(self, user_id: str, bot_id: str, display_name: str = "") -> Dict:
+        """จำคนทันที — ถ้ารู้จักคืนข้อมูลเลย ถ้าไม่รู้จักเรียนรู้ทันที"""
+        async with self._lock:
+            if user_id in self._people:
+                person = self._people[user_id]
+                person["bots_seen"].add(bot_id)
+                if display_name and not person.get("display_name"):
+                    person["display_name"] = display_name
+                return dict(person)
+
+            # คนใหม่ — เรียนรู้ทันที
+            new_person = {
+                "name": display_name or "ท่าน",
+                "nickname": display_name or "",
+                "role": "unknown",
+                "is_management": False,
+                "display_name": display_name,
+                "first_seen": datetime.now().isoformat(),
+                "bots_seen": {bot_id},
+            }
+            self._people[user_id] = new_person
+            logger.info(f"[PEOPLE] New person learned: {display_name} ({user_id[:10]}...) via {bot_id}")
+            return dict(new_person)
+
+    async def learn_from_staff_registry(self, records: List[Dict]):
+        """Sync จาก StaffRegistry — อัพเดทข้อมูลทั้งหมด"""
+        async with self._lock:
+            for record in records:
+                # scan all ID columns
+                id_fields = {
+                    "4": "phrae555", "5": "execcopilot", "6": "aiphrae",
+                }
+                name = record.get("1", record.get("2", ""))
+                nickname = record.get("2", "")
+                role = record.get("3", "unknown")
+                is_mgmt = role in ["CEO/Founder", "IT Manager/COO", "Marketing", "Coordinator",
+                                    "Production / หัวหน้ากลุ่ม Jewelry", "Sales / เซลล์"]
+
+                for col, bot in id_fields.items():
+                    uid = record.get(col, "")
+                    if uid and uid.startswith("U"):
+                        if uid not in self._people:
+                            self._people[uid] = {
+                                "name": name, "nickname": nickname, "role": role,
+                                "is_management": is_mgmt, "display_name": name,
+                                "first_seen": "registry", "bots_seen": set(),
+                            }
+                        else:
+                            # อัพเดทข้อมูลจาก registry (เชื่อถือมากกว่า)
+                            self._people[uid]["role"] = role
+                            if nickname:
+                                self._people[uid]["nickname"] = nickname
+            logger.info(f"[PEOPLE] Registry synced — total known: {len(self._people)} people")
+
+    async def update_role(self, user_id: str, role: str, is_management: bool = False):
+        """อัพเดทตำแหน่งคน (เช่น เลื่อนตำแหน่ง)"""
+        async with self._lock:
+            if user_id in self._people:
+                self._people[user_id]["role"] = role
+                self._people[user_id]["is_management"] = is_management
+
+    def is_management(self, user_id: str) -> bool:
+        """เช็คว่าเป็นทีมบริหารหรือไม่"""
+        person = self._people.get(user_id)
+        return person.get("is_management", False) if person else False
+
+    def get_staff_info(self, user_id: str) -> Optional[Dict]:
+        """ดึงข้อมูลคน"""
+        return self._people.get(user_id)
+
+    def get_context_for_ai(self, user_id: str) -> str:
+        """สร้าง context สำหรับ AI — บอทรู้ว่าคุยกับใคร"""
+        person = self._people.get(user_id)
+        if not person:
+            return "\n[สิทธิ์ผู้ใช้] ไม่รู้จักคนนี้ — ต้อนรับและถามชื่อ ห้ามเปิดเผยข้อมูลลับ"
+
+        name = person.get("nickname") or person.get("name", "")
+        role = person.get("role", "unknown")
+
+        if person.get("is_management"):
+            return (
+                f"\n[ข้อมูลทีมงาน] กำลังคุยกับ: {name} ({role}) — "
+                f"เป็นทีมบริหาร สามารถเปิดเผยข้อมูลลับได้ เรียกชื่อเล่นได้เลย"
+            )
+        elif role != "unknown":
+            return (
+                f"\n[ข้อมูลทีมงาน] กำลังคุยกับ: {name} ({role}) — "
+                f"เป็นทีมงาน แต่ไม่ใช่ทีมบริหาร ห้ามเปิดเผยข้อมูลลับบริษัท"
+            )
+        else:
+            return (
+                f"\n[สิทธิ์ผู้ใช้] คนนี้ชื่อ {name} — ยังไม่รู้ตำแหน่ง "
+                f"คุยได้ทุกเรื่อง ช่วยเต็มที่ แต่ห้ามเปิดเผยข้อมูลลับ"
+            )
+
+    @property
+    def total_known(self) -> int:
+        return len(self._people)
+
+
+# Global People Intelligence instance
+people = PeopleIntelligence()
+
+
+# Legacy compatibility functions
 def is_management(user_id: str) -> bool:
-    """เช็คว่า user เป็นทีมบริหารหรือไม่"""
-    return user_id in MANAGEMENT_TEAM
+    return people.is_management(user_id)
 
 def get_staff_info(user_id: str) -> Optional[Dict]:
-    """ดึงข้อมูลทีมงาน"""
-    return MANAGEMENT_TEAM.get(user_id)
+    return people.get_staff_info(user_id)
+
 
 # ==================== Rate Limiting ====================
-# จำกัด concurrent Claude API calls ป้องกัน rate limit
-_ai_semaphore = asyncio.Semaphore(5)  # สูงสุด 5 requests พร้อมกัน
+_ai_semaphore = asyncio.Semaphore(5)
 
 # ==================== Setup ====================
 
@@ -965,19 +1091,9 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
         if result:
             search_result = f"\n[ข้อมูล real-time จาก Perplexity]\n{result[:500]}"
 
-    # 5. เพิ่ม Staff Recognition — บอทรู้ว่าคุยกับใคร
-    staff_info = get_staff_info(user_id)
-    staff_context = ""
-    if staff_info:
-        staff_context = (
-            f"\n[ข้อมูลทีมงาน] กำลังคุยกับ: {staff_info['name']} ({staff_info['role']}) — "
-            f"เป็นทีมบริหาร สามารถเปิดเผยข้อมูลลับได้"
-        )
-    elif not is_management(user_id):
-        staff_context = (
-            "\n[สิทธิ์ผู้ใช้] คนนี้ไม่ใช่ทีมบริหาร — "
-            "ห้ามเปิดเผยข้อมูลลับ (ต้นทุน ราคา กลยุทธ์ ระบบภายใน)"
-        )
+    # 5. People Intelligence — บอทรู้ว่าคุยกับใคร ทันทีที่เจอ
+    person_info = await people.identify(user_id, bot_id, display_name)
+    staff_context = people.get_context_for_ai(user_id)
 
     # 6. สร้าง system prompt เต็ม
     full_system = system_prompt
@@ -1040,17 +1156,63 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
     for event in events:
         event_type = event.get("type", "")
 
+        # จัดการ memberJoined event — คนใหม่เข้ากลุ่ม → จำทันที
+        if event_type == "memberJoined":
+            joined_members = event.get("joined", {}).get("members", [])
+            group_id_join = event.get("source", {}).get("groupId", "")
+            reply_token_join = event.get("replyToken", "")
+            bot_display_join = BOTS_CONFIG.get(bot_id, {}).get("name", "บอท")
+
+            for member in joined_members:
+                member_uid = member.get("userId", "")
+                if not member_uid:
+                    continue
+                # ดึงโปรไฟล์ + จำคนทันที
+                member_profile = await line_get_user_profile(bot_id, member_uid)
+                member_name = member_profile.get("displayName", "คุณ") if member_profile else "คุณ"
+                person_data = await people.identify(member_uid, bot_id, member_name)
+                asyncio.ensure_future(auto_register_user(bot_id, member_uid, member_name, "group_join"))
+
+                # สร้างข้อความต้อนรับอัจฉริยะ
+                if person_data.get("role", "unknown") != "unknown":
+                    welcome = (
+                        f"สวัสดีค่ะคุณ{person_data.get('nickname', member_name)} 🙏\n"
+                        f"น้อง{bot_display_join}จำได้ค่ะ — {person_data.get('role', '')}\n"
+                        f"ยินดีช่วยเหลือทุกเรื่องเลยค่ะ พิมพ์ถามมาได้เลยนะคะ 😊"
+                    )
+                else:
+                    welcome = (
+                        f"สวัสดีค่ะคุณ{member_name} 🙏\n"
+                        f"ยินดีต้อนรับเข้ากลุ่มค่ะ! น้อง{bot_display_join}พร้อมช่วยเหลือทุกเรื่องเลยค่ะ\n"
+                        f"พิมพ์ถามมาได้เลยนะคะ 😊"
+                    )
+                logger.info(f"[MEMBER-JOINED] {member_name} ({member_uid[:10]}...) joined group via {bot_id}, known_role={person_data.get('role')}")
+
+            # ตอบต้อนรับ (ใช้ข้อความสุดท้าย)
+            if joined_members and reply_token_join:
+                await line_reply(bot_id, reply_token_join, welcome, user_id=joined_members[-1].get("userId", ""))
+            continue
+
         # จัดการ follow event — ลงทะเบียนอัตโนมัติ + ต้อนรับ
         if event_type == "follow":
             follow_user_id = event.get("source", {}).get("userId", "unknown")
             logger.info(f"[{bot_id}] New follower: {follow_user_id}")
-            # ดึงโปรไฟล์แล้วลงทะเบียน + ส่งข้อความต้อนรับ
+            # ดึงโปรไฟล์แล้วลงทะเบียน + จำคนทันที
             follow_profile = await line_get_user_profile(bot_id, follow_user_id)
             follow_name = follow_profile.get("displayName", "คุณ") if follow_profile else "คุณ"
+            await people.identify(follow_user_id, bot_id, follow_name)
             asyncio.ensure_future(auto_register_user(bot_id, follow_user_id, follow_name, "follow"))
             bot_display = BOTS_CONFIG.get(bot_id, {}).get("name", "บอท")
-            welcome_msg = (
-                f"สวัสดีค่ะคุณ{follow_name} 🙏\n"
+            person_data = people.get_staff_info(follow_user_id)
+            if person_data and person_data.get("role", "unknown") != "unknown":
+                welcome_msg = (
+                    f"สวัสดีค่ะคุณ{person_data.get('nickname', follow_name)} 🙏\n"
+                    f"น้อง{bot_display}จำได้ค่ะ! คุณ{person_data.get('nickname', follow_name)} — {person_data.get('role', '')}\n"
+                    f"พร้อมช่วยเหลือทุกเรื่องเลยค่ะ พิมพ์ถามมาได้เลยนะคะ 😊"
+                )
+            else:
+                welcome_msg = (
+                    f"สวัสดีค่ะคุณ{follow_name} 🙏\n"
                 f"ยินดีต้อนรับสู่ น้อง{bot_display} ค่ะ!\n\n"
                 f"น้อง{bot_display}พร้อมช่วยเหลือคุณ{follow_name}ในทุกเรื่องเลยค่ะ "
                 f"พิมพ์ถามมาได้เลยนะคะ 😊"
@@ -1084,9 +1246,10 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
         bot_name = BOTS_CONFIG.get(bot_id, {}).get("name", "")
         is_group = source_type == "group"
 
-        # ดึง display name
+        # ดึง display name + จำคนทันที
         profile = await line_get_user_profile(bot_id, user_id)
         display_name = profile.get("displayName", "ท่าน") if profile else "ท่าน"
+        await people.identify(user_id, bot_id, display_name)
 
         # ลงทะเบียนอัตโนมัติ (non-blocking)
         asyncio.ensure_future(auto_register_user(bot_id, user_id, display_name, source_type))
@@ -1202,16 +1365,42 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+async def startup_sync_people():
+    """เมื่อ server เริ่มทำงาน — sync ข้อมูลคนจาก StaffRegistry Google Sheet"""
+    try:
+        # ดึง StaffRegistry จาก Google Sheets (public CSV)
+        sheet_id = "1-lqcruGtJiMzKFS2MK5gqcxaerzt9PiOTxmdTLqe_eM"
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(sheet_url)
+            if resp.status_code == 200:
+                reader = csv.reader(io.StringIO(resp.text))
+                rows = list(reader)
+                if len(rows) > 1:
+                    records = []
+                    for row in rows[1:]:
+                        record = {str(i): v for i, v in enumerate(row)}
+                        records.append(record)
+                    await people.learn_from_staff_registry(records)
+                    logger.info(f"[STARTUP] People Intelligence synced: {people.total_known} people known")
+            else:
+                logger.warning(f"[STARTUP] StaffRegistry sync failed: HTTP {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"[STARTUP] StaffRegistry sync error: {e} — using seed data only")
+
+
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
-        "version": "2.10.0-conversation-memory",
+        "version": "2.11.0-people-intelligence",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
         "fallback": "Gemini Flash",
         "database": "Airtable",
+        "people_known": people.total_known,
         "timestamp": datetime.now().isoformat(),
         "bots": list(BOTS_CONFIG.keys()),
     }
