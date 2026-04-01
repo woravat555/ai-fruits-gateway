@@ -473,18 +473,31 @@ class PeopleIntelligence:
         return members
 
     def get_group_context_for_ai(self, group_id: str) -> str:
-        """สร้าง context สมาชิกกลุ่มสำหรับ AI — บอทรู้ว่าใครอยู่ในกลุ่มนี้"""
+        """สร้าง context สมาชิกกลุ่มสำหรับ AI — บอทรู้ว่าใครอยู่ในกลุ่มนี้ + คนทั้งหมดที่รู้จัก"""
         members = self.get_group_members(group_id)
-        if not members:
-            return ""
-        member_list = []
-        for m in members[:30]:  # จำกัด 30 คนไม่ให้ context ยาวเกิน
-            role_str = f" ({m['role']})" if m['role'] != 'unknown' else ""
-            member_list.append(f"{m['name']}{role_str}")
+        # สร้าง context จากสมาชิกในกลุ่ม
+        group_text = ""
+        if members:
+            member_list = []
+            for m in members[:30]:
+                role_str = f" ({m['role']})" if m['role'] != 'unknown' else ""
+                member_list.append(f"{m['name']}{role_str}")
+            group_text = f"\n[สมาชิกในกลุ่มนี้ {len(members)} คน] " + ", ".join(member_list)
+
+        # เพิ่ม context คนทั้งหมดที่รู้จัก (จาก Airtable + seed + ทุกกลุ่ม)
+        total = len(self._people)
+        # แสดงทีมบริหารที่รู้จัก
+        mgmt_names = []
+        for uid, info in self._people.items():
+            if info.get("is_management"):
+                mgmt_names.append(info.get("nickname") or info.get("name", ""))
+        mgmt_text = ", ".join(set(mgmt_names)) if mgmt_names else "ยังไม่มีข้อมูล"
+
         return (
-            f"\n[สมาชิกในกลุ่มนี้ {len(members)} คน] "
-            + ", ".join(member_list)
-            + "\nคุณจำทุกคนในกลุ่มนี้ได้ เรียกชื่อได้เลย สามารถประสานงานข้ามคนในกลุ่มได้"
+            group_text
+            + f"\n[ฐานข้อมูลคนที่รู้จักทั้งหมด {total} คน] ทีมบริหาร: {mgmt_text}"
+            + "\nคุณจำทุกคนได้ เรียกชื่อได้เลย ค้นหาคนตามชื่อได้ ประสานงานข้ามคนข้ามกลุ่มได้"
+            + "\nถ้าถูกถามว่ารู้จักใคร ให้ตอบจากข้อมูลที่มีทั้งหมด ไม่ใช่แค่ในกลุ่มนี้"
         )
 
     async def learn_from_staff_registry(self, records: List[Dict]):
@@ -557,6 +570,14 @@ class PeopleIntelligence:
                 f"\n[สิทธิ์ผู้ใช้] คนนี้ชื่อ {name} — ยังไม่รู้ตำแหน่ง "
                 f"คุยได้ทุกเรื่อง ช่วยเต็มที่ แต่ห้ามเปิดเผยข้อมูลลับ"
             )
+
+    def get_all_known_summary(self) -> str:
+        """สรุปคนที่รู้จักทั้งหมด — สำหรับ AI ใช้ตอบคำถาม"""
+        total = len(self._people)
+        mgmt_count = sum(1 for p in self._people.values() if p.get("is_management"))
+        staff_count = sum(1 for p in self._people.values() if p.get("role", "unknown") != "unknown" and not p.get("is_management"))
+        others = total - mgmt_count - staff_count
+        return f"ทีมบริหาร {mgmt_count} คน, ทีมงาน {staff_count} คน, เกษตรกร/ลูกค้า {others} คน, รวม {total} คน"
 
     @property
     def total_known(self) -> int:
@@ -1637,7 +1658,7 @@ async def startup_sync_people():
 async def health():
     return {
         "status": "healthy",
-        "version": "2.13.1-full-people-memory",
+        "version": "2.13.2-full-people-visibility",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
