@@ -29,10 +29,5 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 import httpx
 import uvicorn
-    
-# =================== Configuration ====================
 
-COMPANY = "AI Fruits Platform"
-VERSION = "v2.16.1"
-GATEWAY_NAME = "Railway Gateway v2.0"
-GATEWAY_VERSION = "6.9"
+COMPANY_CONTEXT = """
