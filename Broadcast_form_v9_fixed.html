@@ -595,55 +595,55 @@ function selectSingle(el, groupId) {
 // ==================== CROP PHASE DATA (from poster/schedule) ====================
 const CROP_PHASES = {
   'ส้มเขียวหวาน': {
-    headerPhase: 'ระยะผลอ่อน',
+    headerPhase: 'ระยะออกดอกและติดผล → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
     weeks: [
-      {week: 10, month: 'มี.ค.', phase: 'ผลอ่อนขนาด 1.0–1.2 ซม.'},
-      {week: 11, month: 'มี.ค.', phase: 'ผลอ่อนขนาด 1.5–2.0 ซม.'},
-      {week: 12, month: 'มี.ค.', phase: 'ผลอ่อนขนาด 2.0–2.5 ซม.'},
-      {week: 13, month: 'มี.ค.', phase: 'ผลอ่อนขนาด 2.5–3.0 ซม.'},
-      {week: 14, month: 'เม.ย.', phase: 'ผลอ่อนขนาด 3.5 เดือน'},
-      {week: 15, month: 'เม.ย.', phase: 'ผลอ่อนขนาด 3.0–3.5 ซม.'},
-      {week: 16, month: 'เม.ย.', phase: 'ผลอ่อนขนาด 3.5 ซม.'},
-      {week: 17, month: 'เม.ย.', phase: 'ผลอ่อนขนาด 3.5 ซม.'}
+      {week: 10, month: 'มี.ค.', phase: 'ระยะออกดอก — เริ่มแทงช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกเริ่มบาน/ผสมเกสร'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — กลีบดอกร่วง/เริ่มติดผล'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะผลอ่อน — ผลอ่อนเริ่มเจริญ'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลกำลังเจริญเติบโต'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะขยายผล — ให้ปุ๋ยบำรุงผล'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะขยายผล — ผลโตขึ้นต่อเนื่อง'}
     ]
   },
   'ทุเรียน': {
-    headerPhase: 'ระยะการเจริญเติบโตของผลเล็กให้เป็นผลใหญ่ขึ้น',
+    headerPhase: 'ระยะดอก → ระยะผสมเกสร → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
     weeks: [
-      {week: 10, month: 'มี.ค.', phase: 'ระยะหางแย้'},
-      {week: 11, month: 'มี.ค.', phase: 'ระยะหางแย้ไหม้'},
-      {week: 12, month: 'มี.ค.', phase: 'ระยะไข่นกกระทา'},
-      {week: 13, month: 'มี.ค.', phase: 'ระยะไข่ไก่'},
-      {week: 14, month: 'เม.ย.', phase: 'ระยะกระป๋องนม'},
-      {week: 15, month: 'เม.ย.', phase: 'ระยะกระป๋องนม'},
-      {week: 16, month: 'เม.ย.', phase: 'ระยะขยายผลและเบ่งพู'},
-      {week: 17, month: 'เม.ย.', phase: 'ระยะขยายผลและเบ่งพู'}
+      {week: 10, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกตูม/ดอกขาว'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ผสมเกสร/กลีบดอกร่วง'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะหางแย้ — ผลเพิ่งติด'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะหางแย้ไหม้ — หางแย้เริ่มแห้ง'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะไข่นกกระทา — ผลขนาดไข่นกกระทา'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะไข่ไก่ — ผลขนาดไข่ไก่'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะกระป๋องนม — ผลขนาดกระป๋องนม'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะขยายผลและเบ่งพู — ผลกำลังเบ่งพู'}
     ]
   },
   'ลำไย': {
-    headerPhase: 'ระยะการเจริญเติบโตของผล',
+    headerPhase: 'ระยะออกดอก → ระยะผลอ่อน → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
     weeks: [
-      {week: 10, month: 'มี.ค.', phase: 'ดอกบานเต็มที่ ถึง เริ่มติดผลอ่อน'},
-      {week: 11, month: 'มี.ค.', phase: 'ดอกบานเต็มที่ ถึง เริ่มติดผลอ่อน'},
-      {week: 12, month: 'มี.ค.', phase: 'ติดผลอ่อน ถึง ผลเริ่มขยาย'},
-      {week: 13, month: 'มี.ค.', phase: 'ติดผลอ่อน ถึง ผลเริ่มขยาย'},
-      {week: 14, month: 'เม.ย.', phase: 'การเจริญเติบโตของผล'},
-      {week: 15, month: 'เม.ย.', phase: 'การเจริญเติบโตของผล'},
-      {week: 16, month: 'เม.ย.', phase: 'การเจริญเติบโตของผล'},
-      {week: 17, month: 'เม.ย.', phase: 'การเจริญเติบโตของผล'}
+      {week: 10, month: 'มี.ค.', phase: 'ระยะแทงช่อดอก — เริ่มเห็นช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกตัวผู้บาน — ดอกตัวผู้เริ่มบาน'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกตัวเมียบาน/ผสมเกสร'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — เริ่มติดผล'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลอ่อนขนาดเล็ก'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลโตขึ้น'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะคัดแต่งผล — คัดช่อ/ตัดผลเล็ก'}
     ]
   },
   'ส้มโอ': {
-    headerPhase: 'ระยะการเจริญเติบโตของผลเต็มที่',
+    headerPhase: 'ระยะออกดอก–ผลอ่อน → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
     weeks: [
-      {week: 10, month: 'มี.ค.', phase: 'ผลอ่อน หลังดอกบาน 6 สัปดาห์'},
-      {week: 11, month: 'มี.ค.', phase: 'ผลอ่อน หลังดอกบาน 7 สัปดาห์'},
-      {week: 12, month: 'มี.ค.', phase: 'ผลอ่อน หลังดอกบาน 8 สัปดาห์'},
-      {week: 13, month: 'มี.ค.', phase: 'ผลอ่อน หลังดอกบาน 9 สัปดาห์'},
-      {week: 14, month: 'เม.ย.', phase: 'ผลอ่อน หลังดอกบาน 10 สัปดาห์'},
-      {week: 15, month: 'เม.ย.', phase: 'ผลอ่อน หลังดอกบาน 11 สัปดาห์'},
-      {week: 16, month: 'เม.ย.', phase: 'ผลอ่อน หลังดอกบาน 12 สัปดาห์'},
-      {week: 17, month: 'เม.ย.', phase: 'ผลกำลังเจริญเติบโต หลังดอกบาน 13 สัปดาห์'}
+      {week: 10, month: 'มี.ค.', phase: 'ระยะออกดอก — แทงช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกบาน/ผสมเกสร'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — กลีบดอกร่วง/เริ่มติดผล'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะผลอ่อน — ผลอ่อนเริ่มเจริญ'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลกำลังเจริญเติบโต'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลโตขึ้น'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลเริ่มเต็มที่'}
     ]
   }
 };
@@ -653,6 +653,12 @@ const CROP_EMOJIS = {'ส้มเขียวหวาน':'🍊','ส้มโ
 function buildCropStages() {
   const container = document.getElementById('cropStages');
   const selected = getMultiValues('cropGroup');
+  // Save current selections before rebuilding
+  const savedValues = {};
+  selected.forEach(crop => {
+    const selEl = document.getElementById('stage_' + crop.replace(/\s/g,'_'));
+    if (selEl && selEl.value) savedValues[crop] = selEl.value;
+  });
   container.innerHTML = '';
   selected.forEach(crop => {
     const data = CROP_PHASES[crop];
@@ -665,12 +671,15 @@ function buildCropStages() {
     div.style.padding = '12px';
     div.style.borderRadius = '10px';
     div.style.border = '2px solid #a7f3d0';
+    const selectId = 'stage_' + crop.replace(/\s/g,'_');
     let html = '<label style="color:#047857;font-weight:700;">' + emoji + ' ระยะ' + crop + ' ปัจจุบัน <span class="req">*</span></label>';
-    html += '<div style="font-size:0.75em;color:#6b7280;margin-bottom:6px;">' + data.headerPhase + ' (มี.ค.–เม.ย. 2569)</div>';
-    html += '<select id="stage_' + crop.replace(/\s/g,'_') + '" style="width:100%;padding:12px;font-size:1em;border:2px solid #d1d5db;border-radius:10px;font-family:inherit;background:#fff;">';
+    html += '<div style="font-size:0.75em;color:#6b7280;margin-bottom:6px;">' + data.headerPhase + '</div>';
+    html += '<select id="' + selectId + '" style="width:100%;padding:12px;font-size:1em;border:2px solid #d1d5db;border-radius:10px;font-family:inherit;background:#fff;">';
     html += '<option value="">-- เลือกระยะ --</option>';
     data.weeks.forEach(w => {
-      html += '<option value="สป.' + w.week + ': ' + w.phase + '">สัปดาห์ ' + w.week + ' (' + w.month + ') — ' + w.phase + '</option>';
+      const optVal = 'สป.' + w.week + ': ' + w.phase;
+      const isSelected = savedValues[crop] === optVal ? ' selected' : '';
+      html += '<option value="' + optVal + '"' + isSelected + '>สัปดาห์ ' + w.week + ' (' + w.month + ') — ' + w.phase + '</option>';
     });
     html += '</select>';
     div.innerHTML = html;
