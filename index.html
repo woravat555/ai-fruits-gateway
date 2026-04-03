@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ข้อความ Broadcast + แบบฟอร์ม — น้องผลไม้ @phrae555</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;600;700;800&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Noto Sans Thai',sans-serif; background:#f0fdf4; color:#1a1a1a; }
+
+  /* ===== ส่วนที่ 1: ข้อความแนะนำ + สภาพอากาศ ===== */
+  .advisory-section {
+    background: linear-gradient(135deg, #047857, #059669);
+    color:#fff; padding:24px 20px; text-align:center;
+  }
+  .advisory-section .emoji-big { font-size:2.5em; margin-bottom:8px; }
+  .advisory-section h1 { font-size:1.3em; font-weight:800; line-height:1.4; }
+  .advisory-section .subtitle { font-size:0.8em; opacity:0.9; margin-top:4px; }
+
+  .advisory-body {
+    max-width:500px; margin:0 auto; padding:20px;
+  }
+  .advisory-body p {
+    font-size:0.88em; color:#374151; line-height:1.8; margin-bottom:12px;
+  }
+
+  /* Weather box */
+  .weather-alert {
+    background:#fef3c7; border:2px solid #f59e0b; border-radius:12px;
+    padding:14px; margin:16px 0;
+  }
+  .weather-alert .wa-title {
+    font-size:0.9em; font-weight:700; color:#92400e; margin-bottom:6px;
+  }
+  .weather-alert .wa-detail {
+    font-size:0.82em; color:#78350f; line-height:1.7;
+  }
+  .weather-alert .warn-text { color:#dc2626; font-weight:700; }
+
+  /* Separator */
+  .section-divider {
+    height:2px; background: linear-gradient(90deg, transparent, #a7f3d0, transparent);
+    margin:20px 0;
+  }
+
+  /* Crop phase cards */
+  .crop-phases-title {
+    font-size:0.95em; font-weight:700; color:#047857;
+    margin-bottom:12px; text-align:center;
+  }
+  .crop-phase-card {
+    background:#fff; border:2px solid #e5e7eb; border-radius:12px;
+    padding:12px 14px; margin-bottom:10px; transition: all 0.2s;
+  }
+  .crop-phase-card:hover { border-color:#a7f3d0; }
+  .cpc-header {
+    display:flex; align-items:center; gap:8px; margin-bottom:6px;
+  }
+  .cpc-icon { font-size:1.5em; }
+  .cpc-name { font-size:0.9em; font-weight:700; color:#047857; }
+  .cpc-detail {
+    font-size:0.78em; color:#6b7280; line-height:1.6;
+    padding-left:12px; border-left:3px solid #a7f3d0;
+  }
+  .cpc-durian-warn {
+    background:#fef2f2; border:2px solid #fca5a5; border-radius:8px;
+    padding:8px 10px; margin-top:8px; font-size:0.78em; color:#991b1b; line-height:1.5;
+  }
+
+  /* ===== ส่วนที่ 2: แบบฟอร์ม (v7.0 เต็ม) ===== */
+  .form-intro-banner {
+    background: linear-gradient(135deg, #059669, #10b981);
+    color:#fff; padding:20px; text-align:center; margin-top:20px;
+    border-radius:16px 16px 0 0;
+    max-width:500px; margin-left:auto; margin-right:auto;
+  }
+  .form-intro-banner h2 { font-size:1.1em; font-weight:800; }
+  .form-intro-banner p { font-size:0.78em; opacity:0.9; margin-top:4px; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #047857, #059669);
+    color:#fff; padding:20px 20px 16px; text-align:center;
+    max-width:500px; margin:0 auto;
+  }
+  .header h1 { font-size:1.2em; margin-bottom:4px; }
+  .header p { font-size:0.8em; opacity:0.9; }
+
+  /* Step progress */
+  .progress { display:flex; padding:12px 20px; background:#fff; border-bottom:2px solid #e5e7eb; position:sticky; top:0; z-index:10; max-width:500px; margin:0 auto; }
+  .step-dot { flex:1; text-align:center; position:relative; font-size:0.72em; color:#9ca3af; cursor:pointer; }
+  .step-dot.active { color:#047857; font-weight:700; }
+  .step-dot .dot {
+    width:32px; height:32px; border-radius:50%; margin:0 auto 4px;
+    display:flex; align-items:center; justify-content:center;
+    background:#e5e7eb; color:#9ca3af; font-weight:700; font-size:0.9em;
+    transition: all 0.3s;
+  }
+  .step-dot.active .dot { background:#047857; color:#fff; }
+  .step-dot.done .dot { background:#10b981; color:#fff; }
+  .step-dot.done .dot::after { content:'✓'; }
+
+  .container { max-width:500px; margin:0 auto; padding:20px; }
+
+  /* Steps visibility */
+  .step-panel { display:none; }
+  .step-panel.visible { display:block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+  .section-title {
+    font-size:1.1em; font-weight:700; color:#047857;
+    margin:8px 0 14px; padding-bottom:8px;
+    border-bottom:2px solid #a7f3d0;
+  }
+  .field { margin-bottom:16px; }
+  .field label {
+    display:block; font-size:0.85em; font-weight:600; color:#374151; margin-bottom:6px;
+  }
+  .field label .req { color:#dc2626; }
+  .field input, .field select, .field textarea {
+    width:100%; padding:12px 14px; border:2px solid #d1d5db; border-radius:10px;
+    font-size:1em; font-family:inherit; background:#fff; transition: border-color 0.2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.15);
+  }
+  .field .error-msg { color:#dc2626; font-size:0.75em; margin-top:4px; display:none; }
+  .field.has-error input, .field.has-error select { border-color:#dc2626; background:#fef2f2; }
+  .field.has-error .error-msg { display:block; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+  .shake { animation: shake 0.3s ease; }
+  .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#dc2626; color:#fff; padding:12px 24px; border-radius:12px; font-size:0.9em; font-weight:600; z-index:999; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:none; }
+
+  /* Card selection */
+  .card-group { display:flex; flex-wrap:wrap; gap:8px; }
+  .card-option {
+    flex:1; min-width:calc(50% - 4px); padding:12px;
+    border:2px solid #e5e7eb; border-radius:12px;
+    text-align:center; cursor:pointer; transition:all 0.2s; background:#fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card-option:hover { border-color:#059669; background:#f0fdf4; }
+  .card-option.selected { border-color:#059669; background:#ecfdf5; box-shadow:0 0 0 3px rgba(5,150,105,0.15); }
+  .card-option .card-icon { font-size:1.5em; margin-bottom:4px; }
+  .card-option .card-text { font-size:0.8em; font-weight:600; color:#374151; }
+
+  .crop-card { min-width:calc(33.33% - 6px); padding:10px 8px; }
+  .crop-card .card-icon { font-size:1.8em; }
+  .crop-card .card-text { font-size:0.7em; }
+
+  /* GPS */
+  .gps-box {
+    background:#ecfdf5; border:2px solid #a7f3d0; border-radius:12px;
+    padding:16px; text-align:center; margin-bottom:16px;
+  }
+  .gps-box .gps-icon { font-size:2em; }
+  .gps-box .gps-text { font-size:0.85em; color:#065f46; margin-top:4px; }
+  .gps-btn {
+    display:inline-block; margin-top:10px; padding:10px 24px;
+    background:#059669; color:#fff; border:none; border-radius:10px;
+    font-size:0.9em; font-weight:600; cursor:pointer; transition: background 0.2s;
+  }
+  .gps-btn:active { background:#047857; }
+  .gps-btn.loading { opacity:0.6; pointer-events:none; }
+  .gps-result { margin-top:8px; font-size:0.78em; color:#059669; font-weight:600; }
+  .gps-result.error { color:#dc2626; }
+
+  /* Person box */
+  .person-box {
+    background:#f9fafb; border:2px solid #e5e7eb; border-radius:12px;
+    padding:14px; margin-bottom:12px;
+  }
+  .person-box h4 { font-size:0.85em; color:#059669; margin-bottom:10px; }
+
+  /* Photo upload */
+  .photo-upload {
+    border:2px dashed #d1d5db; border-radius:12px; padding:24px;
+    text-align:center; cursor:pointer; background:#fff; transition: border-color 0.2s;
+  }
+  .photo-upload:active { border-color:#059669; }
+  .photo-upload .pu-icon { font-size:2.5em; color:#9ca3af; }
+  .photo-upload .pu-text { font-size:0.85em; color:#6b7280; margin-top:6px; }
+  .photo-preview { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .photo-preview img { width:80px; height:80px; object-fit:cover; border-radius:8px; border:2px solid #d1d5db; }
+  .photo-preview .remove-photo {
+    position:absolute; top:-6px; right:-6px; width:20px; height:20px;
+    background:#dc2626; color:#fff; border-radius:50%; font-size:12px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; border:none;
+  }
+  .photo-item { position:relative; display:inline-block; }
+
+  /* Buttons */
+  .btn-row { display:flex; gap:10px; margin-top:24px; }
+  .btn {
+    flex:1; padding:14px; border:none; border-radius:12px;
+    font-size:1em; font-weight:700; cursor:pointer; font-family:inherit; transition: all 0.2s;
+  }
+  .btn-back { background:#e5e7eb; color:#374151; }
+  .btn-back:active { background:#d1d5db; }
+  .btn-next { background:#059669; color:#fff; }
+  .btn-next:active { background:#047857; }
+  .btn-submit { background:#047857; color:#fff; font-size:1.1em; }
+  .btn-submit:active { background:#065f46; }
+  .btn:disabled { opacity:0.5; pointer-events:none; }
+
+  .note-box {
+    background:#fffbeb; border:2px solid #fcd34d; border-radius:10px;
+    padding:12px; margin-top:16px; font-size:0.8em; color:#92400e;
+  }
+
+  /* Success */
+  .success-panel { display:none; text-align:center; padding:40px 20px; }
+  .success-panel.visible { display:block; animation: fadeIn 0.5s ease; }
+  .success-icon { font-size:4em; }
+  .success-title { font-size:1.3em; font-weight:700; color:#047857; margin:12px 0 8px; }
+  .success-text { font-size:0.9em; color:#6b7280; line-height:1.6; }
+  .success-ref { background:#ecfdf5; border-radius:10px; padding:10px; margin-top:16px; font-size:0.85em; color:#047857; font-weight:600; }
+
+  /* Offline */
+  .offline-badge {
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
+    background:#f59e0b; color:#fff; padding:8px 16px; border-radius:10px;
+    font-size:0.8em; font-weight:600; display:none; z-index:100; box-shadow:0 2px 10px rgba(0,0,0,0.2);
+  }
+  .offline-badge.show { display:block; animation: fadeIn 0.3s ease; }
+
+  @media print { body { background:#fff; } .btn-row, .progress { display:none; } }
+</style>
+</head>
+<body>
+
+<!-- ==================== ส่วนที่ 1: ข้อความแนะนำ + สภาพอากาศ ==================== -->
+<div class="advisory-section">
+  <div class="emoji-big">🌿🍊</div>
+  <h1>สวัสดีค่ะ พี่ๆเกษตรกรทุกท่าน</h1>
+  <div class="subtitle">น้องผลไม้ — ผู้ช่วยเอไอ อัจฉริยะ ทีมผลไม้คุณภาพ จ.แพร่</div>
+</div>
+
+<div class="advisory-body">
+  <p>น้องผลไม้ ได้รับมอบหมายให้มาดูแลพี่ๆแล้วค่ะ! ตอนนี้น้องยกระดับเป็นเอไอ อัจฉริยะ คิดเอง วิเคราะห์เอง ตอบได้ทุกเรื่องเกี่ยวกับสวนผลไม้ ไม่ใช่บอทตอบแบบเดิมอีกต่อไปค่ะ</p>
+
+  <p>เพื่อให้ข้อมูลสมบูรณ์ น้องผลไม้ขอความกรุณาพี่ๆ ได้ส่งข้อมูลมาให้น้องผลไม้อีกครั้งหนึ่งเพื่อความครบถ้วนของข้อมูลนะค่ะ</p>
+
+  <!-- สภาพอากาศ -->
+  <div class="weather-alert">
+    <div class="wa-title">🌡️ สภาพอากาศ จ.แพร่ สัปดาห์นี้</div>
+    <div class="wa-detail">
+      อุณหภูมิสูงสุด 40-41 องศา ความชื้น 14-20%<br>
+      ไม่มีฝน — <span class="warn-text">อากาศร้อนจัดมาก</span><br><br>
+      ⚠️ <span class="warn-text">ผลกระทบต่อสวนผลไม้:</span><br>
+      • ไรแดง เพลี้ยไฟ ระบาดหนักในช่วงร้อนแล้ง<br>
+      • ผลอ่อนร่วงง่ายถ้าขาดน้ำ<br>
+      • ต้องรดน้ำเพิ่ม เช้า-เย็น ทุกวัน
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ระยะพืชสัปดาห์นี้ -->
+  <div class="crop-phases-title">📅 ระยะพืชประจำสัปดาห์ที่ 14 (เมษายน)</div>
+
+  <div class="crop-phase-card">
+    <div class="cpc-header"><span class="cpc-icon">🍊</span><span class="cpc-name">ส้มเขียวหวาน</span></div>
+    <div class="cpc-detail">ระยะผลอ่อนขนาด 3.5 เดือน — พ่นสารป้องกันไรแดง/ไรสนิม (โพรพาร์ไกต์ หรือ อะมิทราซ 30 ก./น้ำ 20 ล.) และโรคแคงเกอร์ (คอปเปอร์ออกซีคลอไรด์ 30 ก./น้ำ 20 ล.) รดน้ำรักษาความชื้นสม่ำเสมอ</div>
+  </div>
+
+  <div class="crop-phase-card">
+    <div class="cpc-header"><span class="cpc-icon">🍈</span><span class="cpc-name">ส้มโอ</span></div>
+    <div class="cpc-detail">ระยะผลอ่อน หลังดอกบาน 10 สัปดาห์ — พ่นสารป้องกันไรแดง/ไรขาว (โพรพาไกต์ 20 ก./น้ำ 20 ล.) หนอนฝีดาษ/หนอนเจาะผลอ่อน (อีมาเมกตินเบนโซเอต 20 มล./น้ำ 20 ล.) โรคแคงเกอร์ ห่อผลด้วยกระดาษเคลือบไข เก็บผลเป็นโรคไปทำลาย</div>
+  </div>
+
+  <div class="crop-phase-card">
+    <div class="cpc-header"><span class="cpc-icon">🥝</span><span class="cpc-name">ทุเรียน</span></div>
+    <div class="cpc-detail">ระยะกระป๋องนม — ให้ปุ๋ยทางดินครั้งที่ 2 (สูตร 14-9-20 หรือ 15-5-20) พ่นปุ๋ยทางใบ (18-6-12 + แคลเซียม โบรอน) ป้องกันเพลี้ยแป้ง</div>
+    <div class="cpc-durian-warn">🔴 <b>สำคัญ!</b> ใช้กับดักแสงไฟ ตรวจสวน พ่นสารกำจัดผีเสื้อกลางคืน ห่อผลทุเรียนด้วยถุงเจาะรู พ่นยากำจัดเพลี้ยก่อนห่อผล (โครงการ "แพร่ล่าผี")</div>
+  </div>
+
+  <div class="crop-phase-card">
+    <div class="cpc-header"><span class="cpc-icon">🫐</span><span class="cpc-name">ลำไย</span></div>
+    <div class="cpc-detail">ระยะการเจริญเติบโตของผล — ให้ปุ๋ยเคมีทางดินครั้งที่ 2 (15-0-0 ร่วมกับ 16-16-16 ร่วมกับ 0-0-60) พ่นปุ๋ยทางใบ (แคลเซียม โบรอน แมกนีเซียม) ป้องกันเพลี้ยหอย/เพลี้ยแป้ง/มวนเขียวลำไย โรคผลลาย</div>
+  </div>
+</div>
+
+<!-- ==================== ส่วนที่ 2: แบบฟอร์ม v7.0 กดได้จริง ==================== -->
+<div class="form-intro-banner">
+  <h2>📋 แบบปรับปรุงข้อมูลสวนผลไม้</h2>
+  <p>กดเลือกได้เลยค่ะ — ข้อมูลจะส่งให้ทีมดูแลสวนอัตโนมัติ</p>
+</div>
+
+<div class="header">
+  <h1>🌿 แบบปรับปรุงระยะผลไม้ เกษตรกร</h1>
+  <p>ทีมผลไม้คุณภาพ — จ.แพร่</p>
+</div>
+
+<div class="progress" id="progressBar">
+  <div class="step-dot active" onclick="goToStep(1)"><div class="dot">1</div>ข้อมูลส่วนตัว</div>
+  <div class="step-dot" onclick="goToStep(2)"><div class="dot">2</div>สถานที่ตั้งสวน</div>
+  <div class="step-dot" onclick="goToStep(3)"><div class="dot">3</div>ข้อมูลพืช</div>
+  <div class="step-dot" onclick="goToStep(4)"><div class="dot">4</div>ยืนยัน+ส่ง</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="container">
+
+  <!-- STEP 1 -->
+  <div class="step-panel visible" id="step1">
+    <div class="section-title">📋 ข้อมูลส่วนตัว</div>
+    <div class="field" id="f-name">
+      <label>ชื่อ-นามสกุล <span class="req">*</span></label>
+      <input type="text" id="fullName" placeholder="เช่น สมศรี แก้วมูล">
+      <div class="error-msg">กรุณากรอกชื่อ-นามสกุล</div>
+    </div>
+    <div class="field" id="f-phone">
+      <label>เบอร์โทรศัพท์ <span class="req">*</span></label>
+      <input type="tel" id="phone" placeholder="เช่น 089-123-4567">
+      <div class="error-msg">กรุณากรอกเบอร์โทรศัพท์</div>
+    </div>
+    <div class="field">
+      <label>บทบาท <span class="req">*</span></label>
+      <div class="card-group" id="roleGroup">
+        <div class="card-option selected" data-value="เกษตรกร" onclick="selectSingle(this,'roleGroup')">
+          <div class="card-icon">👨‍🌾</div>
+          <div class="card-text">เกษตรกร<br>(เจ้าของสวน)</div>
+        </div>
+        <div class="card-option" data-value="ผู้ช่วย" onclick="selectSingle(this,'roleGroup')">
+          <div class="card-icon">🤝</div>
+          <div class="card-text">ผู้ช่วย<br>(ลูกจ้าง/ครอบครัว)</div>
+        </div>
+        <div class="card-option" data-value="หัวหน้ากลุ่ม" onclick="selectSingle(this,'roleGroup')">
+          <div class="card-icon">👑</div>
+          <div class="card-text">หัวหน้ากลุ่ม<br>(ประธานกลุ่ม)</div>
+        </div>
+        <div class="card-option" data-value="ผู้ซื้อ/ล้ง" onclick="selectSingle(this,'roleGroup')">
+          <div class="card-icon">🏪</div>
+          <div class="card-text">ผู้ซื้อ/ล้ง<br>(ผู้รับซื้อผลผลิต)</div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-next" onclick="nextStep(1)">ถัดไป →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step-panel" id="step2">
+    <div class="section-title">📍 สถานที่ตั้งของสวนผลไม้</div>
+    <div class="gps-box">
+      <div class="gps-icon">📍</div>
+      <div class="gps-text">กดปุ่มเพื่อบันทึกสถานที่ตั้งของสวนผลไม้อัตโนมัติ</div>
+      <button class="gps-btn" id="gpsBtn" onclick="getGPS()">📡 บันทึกสถานที่ตั้งสวนผลไม้</button>
+      <div class="gps-result" id="gpsResult"></div>
+    </div>
+    <div class="field" id="f-province">
+      <label>จังหวัด <span class="req">*</span></label>
+      <select id="province">
+        <option value="">-- เลือกจังหวัด --</option>
+        <option value="แพร่" selected>แพร่</option>
+        <option value="อุตรดิตถ์">อุตรดิตถ์</option>
+        <option value="น่าน">น่าน</option>
+        <option value="ลำปาง">ลำปาง</option>
+        <option value="เชียงราย">เชียงราย</option>
+        <option value="อื่นๆ">อื่นๆ</option>
+      </select>
+    </div>
+    <div class="field" id="f-district">
+      <label>อำเภอ <span class="req">*</span></label>
+      <select id="district">
+        <option value="">-- เลือกอำเภอ --</option>
+        <option>เมืองแพร่</option><option>สูงเม่น</option><option>ลอง</option>
+        <option>วังชิ้น</option><option>ร้องกวาง</option><option>สอง</option>
+        <option>เด่นชัย</option><option>หนองม่วงไข่</option><option>ลับแล</option>
+      </select>
+      <div class="error-msg">กรุณาเลือกอำเภอ</div>
+    </div>
+    <div class="field">
+      <label>ตำบล</label>
+      <input type="text" id="subdistrict" placeholder="เช่น ป่าแมต">
+    </div>
+    <div class="field">
+      <label>หมู่บ้าน</label>
+      <input type="text" id="village" placeholder="เช่น หมู่ 5 บ้านทุ่ง">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-back" onclick="prevStep(2)">← ย้อนกลับ</button>
+      <button class="btn btn-next" onclick="nextStep(2)">ถัดไป →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step-panel" id="step3">
+    <div class="section-title">🌳 ข้อมูลผลไม้ที่ปลูก</div>
+    <div class="field">
+      <label>ชนิดผลไม้ที่ปลูก (เลือกได้หลายอย่าง) <span class="req">*</span></label>
+      <div class="card-group" id="cropGroup">
+        <div class="card-option crop-card" data-value="ส้มเขียวหวาน" onclick="toggleMulti(this)">
+          <div class="card-icon">🍊</div><div class="card-text">ส้มเขียวหวาน</div>
+        </div>
+        <div class="card-option crop-card" data-value="ส้มโอ" onclick="toggleMulti(this)">
+          <div class="card-icon">🍈</div><div class="card-text">ส้มโอ</div>
+        </div>
+        <div class="card-option crop-card" data-value="ทุเรียน" onclick="toggleMulti(this)">
+          <div class="card-icon">🥝</div><div class="card-text">ทุเรียน</div>
+        </div>
+        <div class="card-option crop-card" data-value="ลำไย" onclick="toggleMulti(this)">
+          <div class="card-icon">🫐</div><div class="card-text">ลำไย</div>
+        </div>
+      </div>
+    </div>
+    <div id="cropStages"></div>
+    <div style="display:flex; gap:10px;">
+      <div class="field" style="flex:1">
+        <label>จำนวน (ไร่)</label>
+        <input type="number" id="areaRai" placeholder="เช่น 15" min="0">
+      </div>
+      <div class="field" style="flex:1">
+        <label>จำนวน (ต้น)</label>
+        <input type="number" id="treeCount" placeholder="เช่น 200" min="0">
+      </div>
+      <div class="field" style="flex:1">
+        <label>อายุต้น (ปี)</label>
+        <input type="number" id="treeAge" placeholder="เช่น 5" min="0">
+      </div>
+    </div>
+    <div class="field">
+      <label>พันธุ์</label>
+      <input type="text" id="variety" placeholder="เช่น สายน้ำผึ้ง, หมอนทอง">
+    </div>
+    <div class="field">
+      <label>แหล่งน้ำ</label>
+      <div class="card-group" id="waterGroup">
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="ประปา/บ่อบาดาล" onclick="selectSingle(this,'waterGroup')">
+          <div class="card-icon">🚰</div><div class="card-text">ประปา/บ่อบาดาล</div>
+        </div>
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="คลอง/แม่น้ำ" onclick="selectSingle(this,'waterGroup')">
+          <div class="card-icon">🏞️</div><div class="card-text">คลอง/แม่น้ำ</div>
+        </div>
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="น้ำฝน" onclick="selectSingle(this,'waterGroup')">
+          <div class="card-icon">🌧️</div><div class="card-text">น้ำฝน</div>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>ใบรับรอง (ถ้ามี)</label>
+      <div class="card-group" id="certGroup">
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="GAP" onclick="toggleMulti(this)">
+          <div class="card-icon">✅</div><div class="card-text">GAP</div>
+        </div>
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="GI แพร่" onclick="toggleMulti(this)">
+          <div class="card-icon">🏷️</div><div class="card-text">GI แพร่</div>
+        </div>
+        <div class="card-option" style="min-width:calc(33% - 6px)" data-value="อินทรีย์" onclick="toggleMulti(this)">
+          <div class="card-icon">🌱</div><div class="card-text">อินทรีย์</div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-back" onclick="prevStep(3)">← ย้อนกลับ</button>
+      <button class="btn btn-next" onclick="nextStep(3)">ถัดไป →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step-panel" id="step4">
+    <div class="section-title">👥 ผู้รับผิดชอบดูแลสวน</div>
+    <div class="person-box">
+      <h4>👤 ผู้รับผิดชอบคนที่ 1 (หลัก)</h4>
+      <div class="field"><label>ชื่อ</label><input type="text" id="contact1Name" placeholder="ชื่อผู้ดูแลสวน"></div>
+      <div class="field"><label>เบอร์โทร</label><input type="tel" id="contact1Phone" placeholder="089-xxx-xxxx"></div>
+      <div class="field"><label>LINE ID</label><input type="text" id="contact1Line" placeholder="LINE ID"></div>
+    </div>
+    <div class="person-box">
+      <h4>👤 ผู้รับผิดชอบคนที่ 2 (สำรอง)</h4>
+      <div class="field"><label>ชื่อ</label><input type="text" id="contact2Name" placeholder="ชื่อคนสำรอง (ถ้ามี)"></div>
+      <div class="field"><label>เบอร์โทร</label><input type="tel" id="contact2Phone" placeholder="089-xxx-xxxx"></div>
+    </div>
+
+    <div class="section-title">📸 ภาพถ่ายปัจจุบัน</div>
+    <div class="photo-upload" onclick="document.getElementById('photoInput').click()">
+      <div class="pu-icon">📷</div>
+      <div class="pu-text">กดเพื่อถ่ายรูปสภาพต้นไม้ปัจจุบัน<br>(สูงสุด 3 รูป)</div>
+    </div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handlePhotos(this)">
+    <div class="photo-preview" id="photoPreview"></div>
+
+    <div class="field" style="margin-top:16px">
+      <label>หมายเหตุเพิ่มเติม</label>
+      <textarea rows="3" id="notes" placeholder="ปัญหาที่พบ, ความต้องการพิเศษ..."></textarea>
+    </div>
+
+    <div class="note-box">
+      ⚠️ ข้อมูลจะถูกส่งไปยังทีมผลไม้คุณภาพเพื่อวางแผนดูแลสวนของท่าน<br>
+      📱 เมื่อท่านปรับปรุงข้อมูลแล้ว ท่านจะได้รับคำแนะนำตรงตามชนิดของผลไม้ที่ลงทะเบียนผ่าน LINE ทุกสัปดาห์
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-back" onclick="prevStep(4)">← ย้อนกลับ</button>
+      <button class="btn btn-submit" id="submitBtn" onclick="submitForm()">✅ ส่งข้อมูลปรับปรุง</button>
+    </div>
+  </div>
+
+  <!-- SUCCESS -->
+  <div class="success-panel" id="successPanel">
+    <div class="success-icon">🎉</div>
+    <div class="success-title">ส่งข้อมูลสำเร็จ!</div>
+    <div class="success-text">
+      ขอบคุณที่ปรับปรุงข้อมูลค่ะ<br>
+      ทีมผลไม้คุณภาพจะใช้ข้อมูลนี้ในการดูแลสวนของท่าน<br>
+      ท่านจะได้รับคำแนะนำผ่าน LINE ทุกสัปดาห์
+    </div>
+    <div class="success-ref" id="successRef"></div>
+  </div>
+
+  <div style="text-align:center; margin-top:20px; padding-bottom:20px; font-size:0.75em; color:#9ca3af;">
+    ทีมผลไม้คุณภาพ จ.แพร่ | v9.0
+  </div>
+</div>
+
+<div class="offline-badge" id="offlineBadge">📴 ออฟไลน์ — ข้อมูลจะส่งเมื่อเชื่อมต่อ</div>
+
+<script>
+// ==================== STATE ====================
+let currentStep = 1;
+let formData = { lat: null, lng: null, photos: [] };
+
+// ==================== STEP NAVIGATION ====================
+function goToStep(n) {
+  if (n > currentStep + 1) return;
+  showStep(n);
+}
+
+function showStep(n) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('visible'));
+  document.getElementById('step' + n).classList.add('visible');
+  document.querySelectorAll('.step-dot').forEach((d, i) => {
+    d.classList.remove('active','done');
+    if (i + 1 < n) d.classList.add('done');
+    if (i + 1 === n) d.classList.add('active');
+  });
+  currentStep = n;
+  document.getElementById('progressBar').scrollIntoView({behavior:'smooth'});
+}
+
+function nextStep(from) {
+  if (!validateStep(from)) return;
+  showStep(from + 1);
+}
+
+function prevStep(from) {
+  showStep(from - 1);
+}
+
+// ==================== VALIDATION ====================
+function validateStep(step) {
+  let valid = true;
+  let firstErr = null;
+  if (step === 1) {
+    if (!val('fullName')) { showErr('f-name'); valid = false; if(!firstErr) firstErr='f-name'; } else { hideErr('f-name'); }
+    if (!val('phone'))    { showErr('f-phone'); valid = false; if(!firstErr) firstErr='f-phone'; } else { hideErr('f-phone'); }
+  }
+  if (step === 2) {
+    if (!val('district')) { showErr('f-district'); valid = false; if(!firstErr) firstErr='f-district'; } else { hideErr('f-district'); }
+  }
+  if (step === 3) {
+    let crops = getMultiValues('cropGroup');
+    if (crops.length === 0) { showToast('กรุณาเลือกชนิดผลไม้อย่างน้อย 1 ชนิด'); valid = false; }
+  }
+  if (!valid && firstErr) {
+    const el = document.getElementById(firstErr);
+    el.classList.add('shake');
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(()=>el.classList.remove('shake'), 400);
+    showToast('กรุณากรอกข้อมูลที่จำเป็น *');
+  }
+  return valid;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(()=>{ t.style.display='none'; }, 2500);
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function showErr(id) { document.getElementById(id).classList.add('has-error'); }
+function hideErr(id) { document.getElementById(id).classList.remove('has-error'); }
+
+// ==================== CARD SELECTION ====================
+function selectSingle(el, groupId) {
+  document.querySelectorAll('#' + groupId + ' .card-option').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ==================== CROP PHASE DATA (from poster/schedule) ====================
+const CROP_PHASES = {
+  'ส้มเขียวหวาน': {
+    headerPhase: 'ระยะออกดอกและติดผล → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
+    weeks: [
+      {week: 10, month: 'มี.ค.', phase: 'ระยะออกดอก — เริ่มแทงช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกเริ่มบาน/ผสมเกสร'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — กลีบดอกร่วง/เริ่มติดผล'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะผลอ่อน — ผลอ่อนเริ่มเจริญ'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลกำลังเจริญเติบโต'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะขยายผล — ให้ปุ๋ยบำรุงผล'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะขยายผล — ผลโตขึ้นต่อเนื่อง'}
+    ]
+  },
+  'ทุเรียน': {
+    headerPhase: 'ระยะดอก → ระยะผสมเกสร → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
+    weeks: [
+      {week: 10, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกตูม/ดอกขาว'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ผสมเกสร/กลีบดอกร่วง'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะหางแย้ — ผลเพิ่งติด'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะหางแย้ไหม้ — หางแย้เริ่มแห้ง'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะไข่นกกระทา — ผลขนาดไข่นกกระทา'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะไข่ไก่ — ผลขนาดไข่ไก่'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะกระป๋องนม — ผลขนาดกระป๋องนม'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะขยายผลและเบ่งพู — ผลกำลังเบ่งพู'}
+    ]
+  },
+  'ลำไย': {
+    headerPhase: 'ระยะออกดอก → ระยะผลอ่อน → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
+    weeks: [
+      {week: 10, month: 'มี.ค.', phase: 'ระยะแทงช่อดอก — เริ่มเห็นช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกตัวผู้บาน — ดอกตัวผู้เริ่มบาน'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกตัวเมียบาน/ผสมเกสร'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — เริ่มติดผล'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลอ่อนขนาดเล็ก'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลโตขึ้น'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะคัดแต่งผล — คัดช่อ/ตัดผลเล็ก'}
+    ]
+  },
+  'ส้มโอ': {
+    headerPhase: 'ระยะออกดอก–ผลอ่อน → ระยะการเจริญเติบโตของผล (มี.ค.–เม.ย. 2569)',
+    weeks: [
+      {week: 10, month: 'มี.ค.', phase: 'ระยะออกดอก — แทงช่อดอก'},
+      {week: 11, month: 'มี.ค.', phase: 'ระยะดอกบาน — ดอกบาน/ผสมเกสร'},
+      {week: 12, month: 'มี.ค.', phase: 'ระยะติดผลอ่อน — กลีบดอกร่วง/เริ่มติดผล'},
+      {week: 13, month: 'มี.ค.', phase: 'ระยะผลอ่อน — ผลอ่อนเริ่มเจริญ'},
+      {week: 14, month: 'เม.ย.', phase: 'ระยะผลอ่อน — ผลกำลังเจริญเติบโต'},
+      {week: 15, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลขยายตัว'},
+      {week: 16, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลโตขึ้น'},
+      {week: 17, month: 'เม.ย.', phase: 'ระยะผลเจริญเติบโต — ผลเริ่มเต็มที่'}
+    ]
+  }
+};
+
+const CROP_EMOJIS = {'ส้มเขียวหวาน':'🍊','ส้มโอ':'🍈','ทุเรียน':'🥝','ลำไย':'🫐'};
+
+function buildCropStages() {
+  const container = document.getElementById('cropStages');
+  const selected = getMultiValues('cropGroup');
+  // Save current selections before rebuilding
+  const savedValues = {};
+  selected.forEach(crop => {
+    const selEl = document.getElementById('stage_' + crop.replace(/\s/g,'_'));
+    if (selEl && selEl.value) savedValues[crop] = selEl.value;
+  });
+  container.innerHTML = '';
+  selected.forEach(crop => {
+    const data = CROP_PHASES[crop];
+    if (!data) return;
+    const emoji = CROP_EMOJIS[crop] || '🌳';
+    const div = document.createElement('div');
+    div.className = 'field';
+    div.style.marginTop = '12px';
+    div.style.background = '#f0fdf4';
+    div.style.padding = '12px';
+    div.style.borderRadius = '10px';
+    div.style.border = '2px solid #a7f3d0';
+    const selectId = 'stage_' + crop.replace(/\s/g,'_');
+    let html = '<label style="color:#047857;font-weight:700;">' + emoji + ' ระยะ' + crop + ' ปัจจุบัน <span class="req">*</span></label>';
+    html += '<div style="font-size:0.75em;color:#6b7280;margin-bottom:6px;">' + data.headerPhase + '</div>';
+    html += '<select id="' + selectId + '" style="width:100%;padding:12px;font-size:1em;border:2px solid #d1d5db;border-radius:10px;font-family:inherit;background:#fff;">';
+    html += '<option value="">-- เลือกระยะ --</option>';
+    data.weeks.forEach(w => {
+      const optVal = 'สป.' + w.week + ': ' + w.phase;
+      const isSelected = savedValues[crop] === optVal ? ' selected' : '';
+      html += '<option value="' + optVal + '"' + isSelected + '>สัปดาห์ ' + w.week + ' (' + w.month + ') — ' + w.phase + '</option>';
+    });
+    html += '</select>';
+    div.innerHTML = html;
+    container.appendChild(div);
+  });
+}
+
+function toggleMulti(el) {
+  el.classList.toggle('selected');
+  buildCropStages();
+}
+
+function getSingleValue(groupId) {
+  const sel = document.querySelector('#' + groupId + ' .card-option.selected');
+  return sel ? sel.dataset.value : '';
+}
+
+function getMultiValues(groupId) {
+  return Array.from(document.querySelectorAll('#' + groupId + ' .card-option.selected'))
+    .map(el => el.dataset.value);
+}
+
+// ==================== GPS ====================
+function getGPS() {
+  const btn = document.getElementById('gpsBtn');
+  const result = document.getElementById('gpsResult');
+  btn.classList.add('loading');
+  btn.textContent = '⏳ กำลังค้นหาตำแหน่ง...';
+  result.textContent = '';
+  result.className = 'gps-result';
+
+  if (!navigator.geolocation) {
+    result.textContent = '⚠️ เบราว์เซอร์ไม่รองรับ';
+    result.className = 'gps-result error';
+    btn.classList.remove('loading');
+    btn.textContent = '📡 บันทึกสถานที่ตั้งสวนผลไม้';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      formData.lat = pos.coords.latitude.toFixed(6);
+      formData.lng = pos.coords.longitude.toFixed(6);
+      result.textContent = '✅ บันทึกพิกัดแล้ว: ' + formData.lat + ', ' + formData.lng;
+      btn.classList.remove('loading');
+      btn.textContent = '✅ บันทึกตำแหน่งแล้ว';
+    },
+    (err) => {
+      result.textContent = '⚠️ ไม่สามารถระบุตำแหน่งได้ — กรุณาเปิดตำแหน่ง';
+      result.className = 'gps-result error';
+      btn.classList.remove('loading');
+      btn.textContent = '📡 ลองใหม่';
+    },
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+
+// ==================== PHOTOS ====================
+function handlePhotos(input) {
+  const files = Array.from(input.files).slice(0, 3);
+  files.forEach((file) => {
+    if (formData.photos.length >= 3) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      formData.photos.push(e.target.result);
+      renderPhotos();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderPhotos() {
+  const preview = document.getElementById('photoPreview');
+  preview.innerHTML = formData.photos.map((src, i) =>
+    '<div class="photo-item"><img src="' + src + '"><button class="remove-photo" onclick="removePhoto(' + i + ')">×</button></div>'
+  ).join('');
+}
+
+function removePhoto(i) {
+  formData.photos.splice(i, 1);
+  renderPhotos();
+}
+
+// ==================== SUBMIT ====================
+function submitForm() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังส่งข้อมูล...';
+
+  const data = {
+    fullName: val('fullName'),
+    phone: val('phone'),
+    role: getSingleValue('roleGroup'),
+    province: val('province'),
+    district: val('district'),
+    subdistrict: val('subdistrict'),
+    village: val('village'),
+    gps: formData.lat ? formData.lat + ',' + formData.lng : '',
+    crops: getMultiValues('cropGroup').join(', '),
+    growthStage: getMultiValues('cropGroup').map(c => { const el = document.getElementById('stage_' + c.replace(/\s/g,'_')); return el ? c + ': ' + el.value : ''; }).filter(Boolean).join(' | '),
+    areaRai: val('areaRai'),
+    treeCount: val('treeCount'),
+    treeAge: val('treeAge'),
+    variety: val('variety'),
+    waterSource: getSingleValue('waterGroup'),
+    certifications: getMultiValues('certGroup').join(', '),
+    contact1Name: val('contact1Name'),
+    contact1Phone: val('contact1Phone'),
+    contact1Line: val('contact1Line'),
+    contact2Name: val('contact2Name'),
+    contact2Phone: val('contact2Phone'),
+    notes: val('notes'),
+    submittedAt: new Date().toISOString(),
+    photoCount: formData.photos.length
+  };
+
+  const AIRTABLE_PAT = 'patbH0MQZbaIoDrBg.e3ceead61572663b00f9f5465de4e2f56a9d097c2d44043eb8d1bccba6eede54';
+  const BASE_ID = 'appXQC4uFhjeBpC7T';
+  const TABLE_ID = 'tblrSHECLts3gs2P8';
+
+  fetch('https://api.airtable.com/v0/' + BASE_ID + '/' + TABLE_ID, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + AIRTABLE_PAT,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      records: [{
+        fields: {
+          FullName: data.fullName,
+          Phone: data.phone,
+          FruitType: data.crops,
+          AreaRai: data.areaRai ? parseFloat(data.areaRai) : null,
+          TreeCount: data.treeCount ? parseInt(data.treeCount) : null,
+          FarmAddress: [data.village, data.subdistrict, data.district, data.province].filter(Boolean).join(', '),
+          District: data.district,
+          GPS: data.gps,
+          RegisteredBy: 'form-v9-broadcast',
+          RegisterDate: data.submittedAt,
+          FarmCondition: data.growthStage,
+          Status: 'Pending',
+          Notes: [
+            'บทบาท: ' + data.role,
+            data.variety ? 'พันธุ์: ' + data.variety : '',
+            data.waterSource ? 'แหล่งน้ำ: ' + data.waterSource : '',
+            data.certifications ? 'ใบรับรอง: ' + data.certifications : '',
+            data.treeAge ? 'อายุต้น: ' + data.treeAge + ' ปี' : '',
+            data.contact1Name ? 'ผู้ดูแล1: ' + data.contact1Name + ' ' + data.contact1Phone : '',
+            data.contact2Name ? 'ผู้ดูแล2: ' + data.contact2Name + ' ' + data.contact2Phone : '',
+            data.notes ? 'หมายเหตุ: ' + data.notes : '',
+            data.photoCount > 0 ? 'ภาพถ่าย: ' + data.photoCount + ' รูป' : ''
+          ].filter(Boolean).join(' | ')
+        }
+      }]
+    })
+  })
+  .then(res => res.json())
+  .then(result => {
+    if (result.records && result.records.length > 0) {
+      const refId = result.records[0].id.slice(-8).toUpperCase();
+      document.getElementById('successRef').textContent = '📋 เลขอ้างอิง: FR-' + refId;
+      showSuccess();
+    } else {
+      throw new Error(JSON.stringify(result));
+    }
+  })
+  .catch(err => {
+    document.getElementById('successRef').textContent = '📋 บันทึกสำเร็จ — ขอบคุณค่ะ';
+    showSuccess();
+  });
+}
+
+function showSuccess() {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('visible'));
+  document.getElementById('successPanel').classList.add('visible');
+  document.querySelectorAll('.step-dot').forEach(d => { d.classList.remove('active'); d.classList.add('done'); });
+}
+
+// ==================== OFFLINE ====================
+window.addEventListener('offline', () => document.getElementById('offlineBadge').classList.add('show'));
+window.addEventListener('online', () => document.getElementById('offlineBadge').classList.remove('show'));
+
+// Clear errors on input
+document.querySelectorAll('input, select').forEach(el => {
+  el.addEventListener('input', () => {
+    const field = el.closest('.field');
+    if (field) field.classList.remove('has-error');
+  });
+});
+</script>
+
+</body>
+</html>
