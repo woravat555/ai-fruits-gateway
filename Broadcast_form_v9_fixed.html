@@ -796,51 +796,42 @@ function submitForm() {
     photoCount: formData.photos.length
   };
 
-  const AIRTABLE_PAT = 'patbH0MQZbaIoDrBg.e3ceead61572663b00f9f5465de4e2f56a9d097c2d44043eb8d1bccba6eede54';
-  const BASE_ID = 'appXQC4uFhjeBpC7T';
-  const TABLE_ID = 'tblrSHECLts3gs2P8';
+  // Secure submission via Make.com webhook (no API keys exposed)
+  const WEBHOOK_URL = 'https://hook.eu2.make.com/l766p791548jgg9g87e1mw3upoh12y8l';
 
-  fetch('https://api.airtable.com/v0/' + BASE_ID + '/' + TABLE_ID, {
+  const submitData = {
+    fullName: data.fullName,
+    phone: data.phone,
+    crops: data.crops,
+    areaRai: data.areaRai ? parseFloat(data.areaRai) : null,
+    treeCount: data.treeCount ? parseInt(data.treeCount) : null,
+    farmAddress: [data.village, data.subdistrict, data.district, data.province].filter(Boolean).join(', '),
+    district: data.district,
+    gps: data.gps,
+    submittedAt: data.submittedAt,
+    growthStage: data.growthStage,
+    notes: [
+      'บทบาท: ' + data.role,
+      data.variety ? 'พันธุ์: ' + data.variety : '',
+      data.waterSource ? 'แหล่งน้ำ: ' + data.waterSource : '',
+      data.certifications ? 'ใบรับรอง: ' + data.certifications : '',
+      data.treeAge ? 'อายุต้น: ' + data.treeAge + ' ปี' : '',
+      data.contact1Name ? 'ผู้ดูแล1: ' + data.contact1Name + ' ' + data.contact1Phone : '',
+      data.contact2Name ? 'ผู้ดูแล2: ' + data.contact2Name + ' ' + data.contact2Phone : '',
+      data.notes ? 'หมายเหตุ: ' + data.notes : '',
+      data.photoCount > 0 ? 'ภาพถ่าย: ' + data.photoCount + ' รูป' : ''
+    ].filter(Boolean).join(' | ')
+  };
+
+  fetch(WEBHOOK_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + AIRTABLE_PAT,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      records: [{
-        fields: {
-          FullName: data.fullName,
-          Phone: data.phone,
-          FruitType: data.crops,
-          AreaRai: data.areaRai ? parseFloat(data.areaRai) : null,
-          TreeCount: data.treeCount ? parseInt(data.treeCount) : null,
-          FarmAddress: [data.village, data.subdistrict, data.district, data.province].filter(Boolean).join(', '),
-          District: data.district,
-          GPS: data.gps,
-          RegisteredBy: 'form-v9-broadcast',
-          RegisterDate: data.submittedAt,
-          FarmCondition: data.growthStage,
-          Status: 'Pending',
-          Notes: [
-            'บทบาท: ' + data.role,
-            data.variety ? 'พันธุ์: ' + data.variety : '',
-            data.waterSource ? 'แหล่งน้ำ: ' + data.waterSource : '',
-            data.certifications ? 'ใบรับรอง: ' + data.certifications : '',
-            data.treeAge ? 'อายุต้น: ' + data.treeAge + ' ปี' : '',
-            data.contact1Name ? 'ผู้ดูแล1: ' + data.contact1Name + ' ' + data.contact1Phone : '',
-            data.contact2Name ? 'ผู้ดูแล2: ' + data.contact2Name + ' ' + data.contact2Phone : '',
-            data.notes ? 'หมายเหตุ: ' + data.notes : '',
-            data.photoCount > 0 ? 'ภาพถ่าย: ' + data.photoCount + ' รูป' : ''
-          ].filter(Boolean).join(' | ')
-        }
-      }]
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(submitData)
   })
   .then(res => res.json())
   .then(result => {
-    if (result.records && result.records.length > 0) {
-      const refId = result.records[0].id.slice(-8).toUpperCase();
-      document.getElementById('successRef').textContent = '📋 เลขอ้างอิง: FR-' + refId;
+    if (result.success) {
+      document.getElementById('successRef').textContent = '📋 บันทึกสำเร็จ — ขอบคุณค่ะ';
       showSuccess();
     } else {
       throw new Error(JSON.stringify(result));
