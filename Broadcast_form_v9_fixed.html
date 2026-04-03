@@ -7,22 +7,22 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;600;700;800&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Noto Sans Thai',sans-serif; background:#f0fdf4; color:#1a1a1a; }
+  body { font-family:'Noto Sans Thai',sans-serif; background:#f0fdf4; color:#1a1a1a; font-size:18px; }
 
   /* ===== ส่วนที่ 1: ข้อความแนะนำ + สภาพอากาศ ===== */
   .advisory-section {
     background: linear-gradient(135deg, #047857, #059669);
     color:#fff; padding:24px 20px; text-align:center;
   }
-  .advisory-section .emoji-big { font-size:2.5em; margin-bottom:8px; }
-  .advisory-section h1 { font-size:1.3em; font-weight:800; line-height:1.4; }
-  .advisory-section .subtitle { font-size:0.8em; opacity:0.9; margin-top:4px; }
+  .advisory-section .emoji-big { font-size:3em; margin-bottom:8px; }
+  .advisory-section h1 { font-size:1.5em; font-weight:800; line-height:1.4; }
+  .advisory-section .subtitle { font-size:0.95em; opacity:0.9; margin-top:4px; }
 
   .advisory-body {
     max-width:500px; margin:0 auto; padding:20px;
   }
   .advisory-body p {
-    font-size:0.88em; color:#374151; line-height:1.8; margin-bottom:12px;
+    font-size:1.05em; color:#374151; line-height:1.9; margin-bottom:14px;
   }
 
   /* Weather box */
@@ -31,10 +31,10 @@
     padding:14px; margin:16px 0;
   }
   .weather-alert .wa-title {
-    font-size:0.9em; font-weight:700; color:#92400e; margin-bottom:6px;
+    font-size:1.1em; font-weight:700; color:#92400e; margin-bottom:6px;
   }
   .weather-alert .wa-detail {
-    font-size:0.82em; color:#78350f; line-height:1.7;
+    font-size:1em; color:#78350f; line-height:1.8;
   }
   .weather-alert .warn-text { color:#dc2626; font-weight:700; }
 
@@ -46,7 +46,7 @@
 
   /* Crop phase cards */
   .crop-phases-title {
-    font-size:0.95em; font-weight:700; color:#047857;
+    font-size:1.15em; font-weight:700; color:#047857;
     margin-bottom:12px; text-align:center;
   }
   .crop-phase-card {
@@ -58,14 +58,14 @@
     display:flex; align-items:center; gap:8px; margin-bottom:6px;
   }
   .cpc-icon { font-size:1.5em; }
-  .cpc-name { font-size:0.9em; font-weight:700; color:#047857; }
+  .cpc-name { font-size:1.1em; font-weight:700; color:#047857; }
   .cpc-detail {
-    font-size:0.78em; color:#6b7280; line-height:1.6;
+    font-size:0.95em; color:#6b7280; line-height:1.8;
     padding-left:12px; border-left:3px solid #a7f3d0;
   }
   .cpc-durian-warn {
     background:#fef2f2; border:2px solid #fca5a5; border-radius:8px;
-    padding:8px 10px; margin-top:8px; font-size:0.78em; color:#991b1b; line-height:1.5;
+    padding:8px 10px; margin-top:8px; font-size:0.95em; color:#991b1b; line-height:1.6;
   }
 
   /* ===== ส่วนที่ 2: แบบฟอร์ม (v7.0 เต็ม) ===== */
@@ -75,8 +75,8 @@
     border-radius:16px 16px 0 0;
     max-width:500px; margin-left:auto; margin-right:auto;
   }
-  .form-intro-banner h2 { font-size:1.1em; font-weight:800; }
-  .form-intro-banner p { font-size:0.78em; opacity:0.9; margin-top:4px; }
+  .form-intro-banner h2 { font-size:1.3em; font-weight:800; }
+  .form-intro-banner p { font-size:0.95em; opacity:0.9; margin-top:4px; }
 
   /* Header */
   .header {
@@ -84,12 +84,12 @@
     color:#fff; padding:20px 20px 16px; text-align:center;
     max-width:500px; margin:0 auto;
   }
-  .header h1 { font-size:1.2em; margin-bottom:4px; }
-  .header p { font-size:0.8em; opacity:0.9; }
+  .header h1 { font-size:1.4em; margin-bottom:4px; }
+  .header p { font-size:1em; opacity:0.9; }
 
   /* Step progress */
   .progress { display:flex; padding:12px 20px; background:#fff; border-bottom:2px solid #e5e7eb; position:sticky; top:0; z-index:10; max-width:500px; margin:0 auto; }
-  .step-dot { flex:1; text-align:center; position:relative; font-size:0.72em; color:#9ca3af; cursor:pointer; }
+  .step-dot { flex:1; text-align:center; position:relative; font-size:0.85em; color:#9ca3af; cursor:pointer; }
   .step-dot.active { color:#047857; font-weight:700; }
   .step-dot .dot {
     width:32px; height:32px; border-radius:50%; margin:0 auto 4px;
@@ -109,23 +109,23 @@
   @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
 
   .section-title {
-    font-size:1.1em; font-weight:700; color:#047857;
+    font-size:1.3em; font-weight:700; color:#047857;
     margin:8px 0 14px; padding-bottom:8px;
     border-bottom:2px solid #a7f3d0;
   }
   .field { margin-bottom:16px; }
   .field label {
-    display:block; font-size:0.85em; font-weight:600; color:#374151; margin-bottom:6px;
+    display:block; font-size:1.05em; font-weight:600; color:#374151; margin-bottom:8px;
   }
   .field label .req { color:#dc2626; }
   .field input, .field select, .field textarea {
-    width:100%; padding:12px 14px; border:2px solid #d1d5db; border-radius:10px;
-    font-size:1em; font-family:inherit; background:#fff; transition: border-color 0.2s;
+    width:100%; padding:14px 16px; border:2px solid #d1d5db; border-radius:10px;
+    font-size:1.1em; font-family:inherit; background:#fff; transition: border-color 0.2s;
   }
   .field input:focus, .field select:focus, .field textarea:focus {
     outline:none; border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,0.15);
   }
-  .field .error-msg { color:#dc2626; font-size:0.75em; margin-top:4px; display:none; }
+  .field .error-msg { color:#dc2626; font-size:0.9em; margin-top:4px; display:none; }
   .field.has-error input, .field.has-error select { border-color:#dc2626; background:#fef2f2; }
   .field.has-error .error-msg { display:block; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
@@ -142,12 +142,12 @@
   }
   .card-option:hover { border-color:#059669; background:#f0fdf4; }
   .card-option.selected { border-color:#059669; background:#ecfdf5; box-shadow:0 0 0 3px rgba(5,150,105,0.15); }
-  .card-option .card-icon { font-size:1.5em; margin-bottom:4px; }
-  .card-option .card-text { font-size:0.8em; font-weight:600; color:#374151; }
+  .card-option .card-icon { font-size:1.8em; margin-bottom:4px; }
+  .card-option .card-text { font-size:1em; font-weight:600; color:#374151; }
 
-  .crop-card { min-width:calc(33.33% - 6px); padding:10px 8px; }
-  .crop-card .card-icon { font-size:1.8em; }
-  .crop-card .card-text { font-size:0.7em; }
+  .crop-card { min-width:calc(33.33% - 6px); padding:12px 10px; }
+  .crop-card .card-icon { font-size:2em; }
+  .crop-card .card-text { font-size:0.9em; }
 
   /* GPS */
   .gps-box {
@@ -155,15 +155,15 @@
     padding:16px; text-align:center; margin-bottom:16px;
   }
   .gps-box .gps-icon { font-size:2em; }
-  .gps-box .gps-text { font-size:0.85em; color:#065f46; margin-top:4px; }
+  .gps-box .gps-text { font-size:1em; color:#065f46; margin-top:4px; }
   .gps-btn {
     display:inline-block; margin-top:10px; padding:10px 24px;
     background:#059669; color:#fff; border:none; border-radius:10px;
-    font-size:0.9em; font-weight:600; cursor:pointer; transition: background 0.2s;
+    font-size:1.05em; font-weight:600; cursor:pointer; transition: background 0.2s;
   }
   .gps-btn:active { background:#047857; }
   .gps-btn.loading { opacity:0.6; pointer-events:none; }
-  .gps-result { margin-top:8px; font-size:0.78em; color:#059669; font-weight:600; }
+  .gps-result { margin-top:8px; font-size:0.95em; color:#059669; font-weight:600; }
   .gps-result.error { color:#dc2626; }
 
   /* Person box */
@@ -171,7 +171,7 @@
     background:#f9fafb; border:2px solid #e5e7eb; border-radius:12px;
     padding:14px; margin-bottom:12px;
   }
-  .person-box h4 { font-size:0.85em; color:#059669; margin-bottom:10px; }
+  .person-box h4 { font-size:1.05em; color:#059669; margin-bottom:10px; }
 
   /* Photo upload */
   .photo-upload {
@@ -180,7 +180,7 @@
   }
   .photo-upload:active { border-color:#059669; }
   .photo-upload .pu-icon { font-size:2.5em; color:#9ca3af; }
-  .photo-upload .pu-text { font-size:0.85em; color:#6b7280; margin-top:6px; }
+  .photo-upload .pu-text { font-size:1em; color:#6b7280; margin-top:6px; }
   .photo-preview { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
   .photo-preview img { width:80px; height:80px; object-fit:cover; border-radius:8px; border:2px solid #d1d5db; }
   .photo-preview .remove-photo {
@@ -193,20 +193,20 @@
   /* Buttons */
   .btn-row { display:flex; gap:10px; margin-top:24px; }
   .btn {
-    flex:1; padding:14px; border:none; border-radius:12px;
-    font-size:1em; font-weight:700; cursor:pointer; font-family:inherit; transition: all 0.2s;
+    flex:1; padding:16px; border:none; border-radius:12px;
+    font-size:1.15em; font-weight:700; cursor:pointer; font-family:inherit; transition: all 0.2s;
   }
   .btn-back { background:#e5e7eb; color:#374151; }
   .btn-back:active { background:#d1d5db; }
   .btn-next { background:#059669; color:#fff; }
   .btn-next:active { background:#047857; }
-  .btn-submit { background:#047857; color:#fff; font-size:1.1em; }
+  .btn-submit { background:#047857; color:#fff; font-size:1.3em; }
   .btn-submit:active { background:#065f46; }
   .btn:disabled { opacity:0.5; pointer-events:none; }
 
   .note-box {
     background:#fffbeb; border:2px solid #fcd34d; border-radius:10px;
-    padding:12px; margin-top:16px; font-size:0.8em; color:#92400e;
+    padding:12px; margin-top:16px; font-size:1em; color:#92400e;
   }
 
   /* Success */
