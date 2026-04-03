@@ -217,6 +217,40 @@
   .success-text { font-size:0.9em; color:#6b7280; line-height:1.6; }
   .success-ref { background:#ecfdf5; border-radius:10px; padding:10px; margin-top:16px; font-size:0.85em; color:#047857; font-weight:600; }
 
+  /* QR Code Referral Section */
+  .qr-referral {
+    margin-top:24px; padding:24px 16px; background:#fff; border:2px dashed #a7f3d0;
+    border-radius:16px; text-align:center;
+  }
+  .qr-referral .qr-title {
+    font-size:1.2em; font-weight:700; color:#047857; margin-bottom:4px;
+  }
+  .qr-referral .qr-subtitle {
+    font-size:0.95em; color:#6b7280; margin-bottom:16px; line-height:1.6;
+  }
+  .qr-referral #qrCodeCanvas {
+    display:inline-block; padding:12px; background:#fff; border-radius:12px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.08);
+  }
+  .qr-referral .qr-url-display {
+    margin-top:12px; font-size:0.8em; color:#9ca3af; word-break:break-all;
+  }
+  .qr-share-buttons {
+    display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap;
+  }
+  .qr-share-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:10px 18px; border-radius:25px; border:none;
+    font-family:inherit; font-size:1em; font-weight:600;
+    cursor:pointer; transition:all 0.2s;
+  }
+  .qr-share-btn.line-btn { background:#06C755; color:#fff; }
+  .qr-share-btn.line-btn:active { background:#05a648; }
+  .qr-share-btn.copy-btn { background:#e5e7eb; color:#374151; }
+  .qr-share-btn.copy-btn:active { background:#d1d5db; }
+  .qr-share-btn.save-btn { background:#3b82f6; color:#fff; }
+  .qr-share-btn.save-btn:active { background:#2563eb; }
+
   /* Offline */
   .offline-badge {
     position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
@@ -509,15 +543,29 @@
       ท่านจะได้รับคำแนะนำผ่าน LINE ทุกสัปดาห์
     </div>
     <div class="success-ref" id="successRef"></div>
+
+    <!-- QR Code Referral Section -->
+    <div class="qr-referral">
+      <div class="qr-title">📲 ชวนเพื่อนเกษตรกรเข้าร่วม!</div>
+      <div class="qr-subtitle">แชร์ QR Code นี้ให้เพื่อนสแกน<br>เพื่อลงทะเบียนเข้าโครงการผลไม้คุณภาพ</div>
+      <div id="qrCodeCanvas"></div>
+      <div class="qr-url-display">woravat555.github.io/ai-fruits-gateway</div>
+      <div class="qr-share-buttons">
+        <button class="qr-share-btn line-btn" onclick="shareViaLINE()">💬 แชร์ผ่าน LINE</button>
+        <button class="qr-share-btn copy-btn" onclick="copyLink()">📋 คัดลอกลิงก์</button>
+        <button class="qr-share-btn save-btn" onclick="saveQRCode()">💾 บันทึก QR</button>
+      </div>
+    </div>
   </div>
 
   <div style="text-align:center; margin-top:20px; padding-bottom:20px; font-size:0.75em; color:#9ca3af;">
-    ทีมผลไม้คุณภาพ จ.แพร่ | v9.0
+    ทีมผลไม้คุณภาพ จ.แพร่ | v9.1
   </div>
 </div>
 
 <div class="offline-badge" id="offlineBadge">📴 ออฟไลน์ — ข้อมูลจะส่งเมื่อเชื่อมต่อ</div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 // ==================== STATE ====================
 let currentStep = 1;
@@ -860,6 +908,77 @@ document.querySelectorAll('input, select').forEach(el => {
     if (field) field.classList.remove('has-error');
   });
 });
+
+// ==================== QR CODE ====================
+const FORM_URL = 'https://woravat555.github.io/ai-fruits-gateway/';
+let qrGenerated = false;
+
+function generateQR() {
+  if (qrGenerated) return;
+  const container = document.getElementById('qrCodeCanvas');
+  if (!container) return;
+  try {
+    new QRCode(container, {
+      text: FORM_URL,
+      width: 200,
+      height: 200,
+      colorDark: '#047857',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+    qrGenerated = true;
+  } catch(e) { console.log('QR generation error:', e); }
+}
+
+// Generate QR when success panel is shown
+const origShowSuccess = showSuccess;
+showSuccess = function() {
+  origShowSuccess();
+  setTimeout(generateQR, 300);
+};
+
+// Also generate on page load (in case someone revisits)
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('successPanel').classList.contains('visible')) {
+    generateQR();
+  }
+});
+
+// ==================== SHARE FUNCTIONS ====================
+function shareViaLINE() {
+  const msg = 'ชวนเพื่อนเกษตรกรลงทะเบียนโครงการผลไม้คุณภาพ จ.แพร่ 🍊🥭 กรอกแบบฟอร์มได้ที่: ' + FORM_URL;
+  const lineUrl = 'https://line.me/R/share?text=' + encodeURIComponent(msg);
+  window.open(lineUrl, '_blank');
+}
+
+function copyLink() {
+  const btn = event.target.closest('.copy-btn');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(FORM_URL).then(() => {
+      btn.innerHTML = '✅ คัดลอกแล้ว!';
+      setTimeout(() => { btn.innerHTML = '📋 คัดลอกลิงก์'; }, 2000);
+    });
+  } else {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = FORM_URL;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.innerHTML = '✅ คัดลอกแล้ว!';
+    setTimeout(() => { btn.innerHTML = '📋 คัดลอกลิงก์'; }, 2000);
+  }
+}
+
+function saveQRCode() {
+  const canvas = document.querySelector('#qrCodeCanvas canvas');
+  if (!canvas) { alert('กรุณารอสักครู่ QR Code กำลังสร้าง...'); return; }
+  const link = document.createElement('a');
+  link.download = 'QR-ลงทะเบียนเกษตรกร-แพร่555.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
 </script>
 
 </body>
