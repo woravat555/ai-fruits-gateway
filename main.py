@@ -713,33 +713,45 @@ async def auto_register_user(bot_id: str, user_id: str, display_name: str, sourc
 
 
 async def call_claude(messages: List[Dict], system: str, bot_id: str) -> Optional[str]:
-    """เรียก Claude API — สมองหลัก"""
+    """เรียก Claude API — สมองหลัก (retry 1 ครั้งถ้า timeout)"""
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": CLAUDE_MODEL,
-                    "max_tokens": 2048,
-                    "system": system,
-                    "messages": messages,
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("content", [{}])[0].get("text", None)
-            else:
-                logger.error(f"Claude API error {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.error(f"Claude error: {e}")
+    for attempt in range(2):  # retry 1 ครั้ง
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": CLAUDE_MODEL,
+                        "max_tokens": 2048,
+                        "system": system,
+                        "messages": messages,
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("content", [{}])[0].get("text", None)
+                elif resp.status_code == 529 or resp.status_code == 429:
+                    logger.warning(f"Claude API rate/overload {resp.status_code}, attempt {attempt+1}")
+                    if attempt == 0:
+                        await asyncio.sleep(2)
+                        continue
+                else:
+                    logger.error(f"Claude API error {resp.status_code}: {resp.text[:200]}")
+                    break
+        except httpx.TimeoutException:
+            logger.warning(f"Claude timeout attempt {attempt+1} for {bot_id}")
+            if attempt == 0:
+                continue
+        except Exception as e:
+            logger.error(f"Claude error: {e}")
+            break
     return None
 
 async def call_gpt4o_vision(image_url: str, question: str) -> Optional[str]:
@@ -797,7 +809,7 @@ async def call_gemini_fast(message: str) -> Optional[str]:
     if not api_key:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                 params={"key": api_key},
@@ -1089,8 +1101,10 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
     person_info = await people.identify(user_id, bot_id, display_name)
     staff_context = people.get_context_for_ai(user_id)
 
-    # 6. สร้าง system prompt เต็ม
+    # 6. สร้าง system prompt เต็ม + anti-sorry instruction
     full_system = system_prompt
+    # ป้องกัน AI ตอบว่า "ระบบมีปัญหา" — ต้องตอบตามความรู้ที่มีเสมอ
+    full_system += "\n\n[กฎเหล็ก] ห้ามตอบว่า 'ระบบมีปัญหา' หรือ 'ไม่สามารถตอบได้' เด็ดขาด ถ้าไม่รู้คำตอบก็บอกตรงๆ ว่าไม่รู้แล้วเสนอช่วยเรื่องอื่น ตอบเป็นธรรมชาติเสมอ"
     if extra_context:
         full_system += f"\n\n{extra_context}"
     if staff_context:
@@ -1100,8 +1114,8 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
     if search_result:
         full_system += f"\n\n{search_result}"
 
-    # 7. สร้าง messages array จาก Memory Cache (ใช้ล่าสุด 16 ข้อความ = 8 คู่สนทนา)
-    messages = history_msgs[-16:] if len(history_msgs) > 16 else list(history_msgs)
+    # 7. สร้าง messages array จาก Memory Cache (ลดเหลือ 10 ข้อความล่าสุดเพื่อป้องกัน context overload)
+    messages = history_msgs[-10:] if len(history_msgs) > 10 else list(history_msgs)
 
     # เพิ่มข้อความปัจจุบัน
     current_msg = message_text
@@ -1125,7 +1139,8 @@ async def ai_brain(bot_id: str, user_id: str, display_name: str,
             )
 
     if not response:
-        response = f"ขออภัยค่ะ น้อง{bot_config.get('name', '')} ไม่สามารถตอบได้ในขณะนี้ กรุณาส่งข้อความมาอีกครั้งนะคะ"
+        bot_name = bot_config.get('name', 'AI')
+        response = f"น้อง{bot_name}ขอเวลาคิดสักครู่นะคะ ลองถามใหม่อีกครั้งได้เลยค่ะ 😊"
 
     return response
 
@@ -1304,7 +1319,8 @@ async def process_webhook_core(bot_id: str, request_body: Dict):
             )
         except Exception as e:
             logger.error(f"AI Brain error: {e}")
-            ai_response = f"ขออภัยค่ะ ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+            bot_name = BOTS_CONFIG.get(bot_id, {}).get('name', 'AI')
+            ai_response = f"น้อง{bot_name}ขอเวลาสักครู่นะคะ ลองส่งข้อความมาอีกครั้งได้เลยค่ะ 😊"
             # ส่งแจ้งเตือน CEO ทันทีผ่าน LINE
             asyncio.ensure_future(send_error_alert(bot_id, "AI_BRAIN_ERROR", str(e)))
 
