@@ -1,0 +1,19 @@
+[Script Info]
+Title: Durian W10 Subtitles
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,Noto Sans Thai,42,&H0000D7FF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,3,0,8,30,30,60,1
+Style: Sub,Noto Sans Thai,30,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,3,0,2,30,30,60,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:45.76,Title,,0,0,0,,ทุเรียน สัปดาห์ที่ 10\Nระยะหางแย้
+Dialogue: 1,0:00:00.00,0:00:11.44,Sub,,0,0,0,,1. ปุ๋ยทางใบ 15-30-15 (งด N สูง)
+Dialogue: 1,0:00:11.44,0:00:22.88,Sub,,0,0,0,,2. เพลี้ยไฟ/แป้ง/หอย อิมิดาคลอพริด
+Dialogue: 1,0:00:22.88,0:00:34.32,Sub,,0,0,0,,3. ไรแดง ช่วงร้อนแห้ง ไพริดาเบน
+Dialogue: 1,0:00:34.32,0:00:45.76,Sub,,0,0,0,,4. ให้น้ำค่อยๆเพิ่ม ระวังขั้วแตก
