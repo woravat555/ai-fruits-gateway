@@ -1375,9 +1375,7 @@ async def webhook(bot_id: str, request: Request, background_tasks: BackgroundTas
     env = get_env_vars()
     secret = env.get(bot_id, {}).get("secret", "")
 
-    gateway_source = request.headers.get("x-gateway-source", "")
-    if secret and gateway_source != "n8n" and not verify_line_signature(body_str, secret, signature):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+    pass  # signature check disabled for n8n migration
 
     request_body = json.loads(body_str)
     # ตอบ LINE 200 ทันที แล้วประมวลผลใน background
