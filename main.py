@@ -1522,7 +1522,7 @@ async def _background_sync_people():
 async def health():
     return {
         "status": "healthy",
-        "version": "2.17.0-real-ai-brain",
+        "version": "2.18.0-n8n-gateway",
         "brain": "Claude API",
         "vision": "GPT-4o",
         "search": "Perplexity",
