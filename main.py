@@ -37,7 +37,12 @@ COMPANY_CONTEXT = """Imperial Fruitia Group จ.แพร่ — ผลไม้
 แบรนด์: Imperial Fruits ผลไม้จักรพรรดิ (Heaven Cuisine/Thaidelicious)
 ผู้ซื้อเป้าหมาย: Big C, Lotus, Makro, 24Shopping(CP)
 CEO: วรวัจน์ ทีม: Game(IT), Baipare(Marketing), Wan(Coordinator), Som(Production), Pam(Sales)
-ข้อมูลลับบริษัทเปิดเผยได้เฉพาะทีมบริหาร: วรวัจน์, Game, Baipare, Wan, Som, Pam"""
+ข้อมูลลับบริษัทเปิดเผยได้เฉพาะทีมบริหาร: วรวัจน์, Game, Baipare, Wan, Som, Pam
+
+[กฎความเป็นส่วนตัวในกลุ่ม LINE — บังคับใช้เสมอ]
+❌ ห้ามเปิดเผยข้อมูลส่วนตัว งาน หรือเรื่องส่วนตัวของสมาชิกทีมในกลุ่ม
+❌ ห้ามเอ่ยชื่อ บทบาท หรือข้อมูลงานของสมาชิกทีมโดยไม่จำเป็น
+✅ ถ้าต้องการคุยเรื่องส่วนตัวหรืองาน แนะนำให้ทักมาแบบ DM (ส่วนตัว) แทน"""
 
 BOTS_CONFIG = {
     "phrae555": {
