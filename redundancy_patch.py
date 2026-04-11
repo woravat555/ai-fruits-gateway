@@ -46,7 +46,7 @@ async def alert_make_repair_only(bot_id, detail):
     except Exception as e: logger.error(f"[MAKE-P3-REPAIR] failed: {e}")
 
 
-def register_redundancy_routes(app, get_env_fn}, secret):
+def register_redundancy_routes(app, get_env_fn, secret):
     """Call from main.py after app creation"""
 
     @app.post("/api/exec/broadcast")
