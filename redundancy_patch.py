@@ -46,23 +46,45 @@ async def alert_make_repair_only(bot_id, detail):
     except Exception as e: logger.error(f"[MAKE-P3-REPAIR] failed: {e}")
 
 
-def register_redundancy_routes(app, get_env_fn, secret):
-    """Call from main.py after app creation"""
+def _get_env_local():
+    return {
+        "phrae555": {
+            "token": os.getenv("LINE_TOKEN_PHRAE555", "") or os.getenv("PHRAE555_CHANNEL_ACCESS_TOKEN", ""),
+        },
+        "930pchss": {
+            "token": os.getenv("LINE_TOKEN_930PCHSS", "") or os.getenv("SALES_CHANNEL_ACCESS_TOKEN", ""),
+        },
+        "aiphrae": {
+            "token": os.getenv("LINE_TOKEN_AIPHRAE", "") or os.getenv("AIPHRAE_CHANNEL_ACCESS_TOKEN", ""),
+        },
+        "jewelry": {
+            "token": os.getenv("LINE_TOKEN_JEWELRY", "") or os.getenv("JEWELRY_CHANNEL_ACCESS_TOKEN", ""),
+        },
+        "execcopilot": {
+            "token": os.getenv("LINE_TOKEN_EXECCOPILOT", "") or os.getenv("EXEC_CHANNEL_ACCESS_TOKEN", ""),
+        },
+    }
+
+
+def register_redundancy_routes(app, get_env_fn=None, secret=""):
+    _secret = secret or os.getenv("DEPLOY_SECRET", "imperial-fruitia-2026")
 
     @app.post("/api/exec/broadcast")
     async def _broadcast(req: Request):
         b = await req.json()
-        if b.get("secret") != secret: raise HTTPException(403)
-        env = get_env_fn()
+        if b.get("secret") != _secret: raise HTTPException(403)
+        env_fn = get_env_fn if callable(get_env_fn) else _get_env_local
+        env = env_fn()
         res = {}
-        sender = b.get("sender", "ท่าประหาร")
+        sender = b.get("sender", "")
         msg = b.get("message","")
         async def _push(bid, tok):
             try:
                 async with httpx.AsyncClient(timeout=10) as c:
                     r = await c.post("https://api.line.me/v2/bot/message/broadcast",
                         headers={"Authorization":f"Bearer {tok}","Content-Type":"application/json"},
-                        json={"messages":[{"type":"text","text":f"[{sender}->this bot]\n{msg}"}]})
+                        json={"messages":[{"type":"text","text":f"[{sender}->this bot]
+{msg}"}]})
                     res[bid] = r.status_code
             except Exception as e: res[bid] = str(e)
         await asyncio.gather(*[_push(b,c.get("token","")) for b,c in env.items() if c.get("token")],
@@ -73,4 +95,4 @@ def register_redundancy_routes(app, get_env_fn, secret):
     async def _platform_health():
         return {"p1":"Railway","p2":f"n8n (config: {bool(N8N_WEBHOOK_URL)})","p3":"Make.com repair-only","fails":_fail_counts}
 
-    logger.info("[REDUNDATCY-PATCH] v2.22.0 registered")
+    logger.info("[REDUNDANCY-PATCH] v2.22.0 registered")
