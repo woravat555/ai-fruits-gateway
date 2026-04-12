@@ -1931,7 +1931,7 @@ async def api_harvest_weekly(week: int = None, crop: str = None):
             try: rdw = int(str(row[0]).strip())
             except: continue
             if rdw != week or len(row) < 3: continue
-            if crop and crop.lower() not in sthrow).lower(): continue
+            if crop and crop.lower() not in strow.lower(): continue
             results.append({"week":rdw,"stage":row[1] if len(row)>1 else "","activity":row[3] if len(row)>3 else row[2] if len(row)>2 else ""})
         flex = {"type":"bubble",
             "header":{"type":"box","layout":"vertical","backgroundColor":"#2E7D32","contents":[
