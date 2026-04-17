@@ -638,7 +638,7 @@ textarea { resize: vertical; min-height: 80px; }
 
         <div style="margin-bottom:20px;">
           <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-bottom:6px;">N8N BASE URL</div>
-          <input type="text" id="cfg-n8n-url" value="https://woravat.app.n8n.cloud">
+          <input type="text" id="cfg-n8n-url" value="/n8n">
         </div>
 
         <hr style="border-color:var(--border);margin:20px 0;">
@@ -731,7 +731,7 @@ const WORKFLOWS = [
   { id: 'wf-health',        name: 'Bot Health Check (07:30)', bot: null,      emoji: '🔍', status: 'building' },
 ];
 
-const N8N_BASE = () => ls('n8n_url') || 'https://woravat.app.n8n.cloud';
+const N8N_BASE = () => ls('n8n_url') || '/n8n';
 const TEST_USER = 'U2c6f36e1a490028e4931cce1bc246b70';
 
 // ══════════════════════════════════════════
