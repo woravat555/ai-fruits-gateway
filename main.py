@@ -121,6 +121,35 @@ def policy():
         'horoscope_enabled': True,
         'gem_recommendation_enabled': True,
         'group_exceptions': ['ผลไม้คุณภาพ'],
+        # DM policy — ตอบทุกคน ทุกเรื่อง
+        'dm_auto_reply': True,
+        'dm_reply_all_users': True,
+        'dm_reply_all_topics': True,
+        'dm_no_filter': True,
+        'dm_scope': 'ALL',   # ไม่กรองหัวข้อ ไม่กรอง uid ไม่กรองชื่อ
+    }
+
+@app.post('/api/dm/handle')
+async def dm_handle(request: Request):
+    """
+    Endpoint สำหรับ n8n เรียกเมื่อมี DM เข้า — ตอบทุกคน ทุกเรื่องเสมอ
+    ไม่มี filter ใด ๆ ทั้งสิ้น
+    """
+    body = await request.json()
+    name = body.get('displayName') or body.get('name') or 'เพื่อน'
+    uid  = body.get('uid') or body.get('userId') or ''
+    msg  = body.get('message') or body.get('text') or ''
+    rows = await _get_registry()
+    row, hdrs = _match_row(rows, name, uid)
+    profile = dict(zip(hdrs, row + ['']*(len(hdrs)-len(row)))) if row else {}
+    return {
+        'must_reply': True,
+        'matched': bool(row),
+        'profile': profile,
+        'display_name': name,
+        'incoming_message': msg,
+        'instruction': 'respond_to_all_topics_no_filter',
+        'policy': 'dm_reply_all_v1',
     }
 
 if __name__ == '__main__':
