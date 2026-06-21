@@ -203,11 +203,62 @@ async def registry_lookup(name: str = '', uid: str = ''):
         return {'found': True, 'profile': prof}
     return {'found': False, 'fallback': 'greet_new_friend', 'suggestion': 'ask_name'}
 
+async def _auto_save_member(uid: str, name: str, bot_id: str, message: str = ""):
+    """บันทึกสมาชิกอัตโนมัติทุกครั้งที่คุยกับบอท — ไม่ว่า DM หรือกลุ่ม"""
+    if not name:
+        return
+    pat = os.getenv("AIRTABLE_PAT", os.getenv("AIRTABLE_API_KEY", ""))
+    base = os.getenv("AIRTABLE_BASE_ID", "appXQC4uFhjeBpC7T")
+    if not pat:
+        return
+    try:
+        # Check if already exists by uid
+        async with httpx.AsyncClient(timeout=8) as c:
+            search_url = f"https://api.airtable.com/v0/{base}/UnifiedProfiles"
+            params = {}
+            if uid:
+                params["filterByFormula"] = f"OR({{LINE_{bot_id}}}='{uid}',{{LINE_phrae555}}='{uid}',{{LINE_execcopilot}}='{uid}')"
+            else:
+                params["filterByFormula"] = f"{{DisplayName}}='{name}'"
+            params["maxRecords"] = 1
+            r = await c.get(search_url, params=params, headers={"Authorization": f"Bearer {pat}"})
+            existing = r.json().get("records", []) if r.status_code == 200 else []
+
+            line_field = f"LINE_{bot_id}" if bot_id else "LINE_phrae555"
+            if existing:
+                # อัปเดต: เพิ่ม uid ถ้ายังไม่มี + อัปเดตชื่อ
+                rec_id = existing[0]["id"]
+                fields = {"DisplayName": name}
+                if uid:
+                    fields[line_field] = uid
+                await c.patch(f"{search_url}/{rec_id}",
+                    json={"fields": fields},
+                    headers={"Authorization": f"Bearer {pat}", "Content-Type": "application/json"})
+            else:
+                # สร้างใหม่
+                fields = {"DisplayName": name, "Status": "Active", "RegisteredVia": bot_id or "auto"}
+                if uid:
+                    fields[line_field] = uid
+                if message:
+                    fields["Notes"] = message[:300]
+                await c.post(search_url,
+                    json={"fields": fields},
+                    headers={"Authorization": f"Bearer {pat}", "Content-Type": "application/json"})
+    except Exception:
+        pass  # ไม่ให้ error นี้กระทบ response หลัก
+
+
 @app.post('/api/bot/respond')
 async def bot_respond(request: Request):
     body = await request.json()
-    name = body.get('displayName') or body.get('name') or ''
-    uid = body.get('uid') or body.get('userId') or ''
+    name    = body.get('displayName') or body.get('name') or ''
+    uid     = body.get('uid') or body.get('userId') or ''
+    bot_id  = body.get('bot_id') or body.get('botId') or 'phrae555'
+    message = body.get('message') or body.get('text') or ''
+
+    # 🔑 AUTO-SAVE ทุกครั้งที่มีการคุย — ไม่ว่าใครก็ตาม
+    asyncio.ensure_future(_auto_save_member(uid, name, bot_id, message))
+
     rows = await _get_registry()
     row, hdrs = _match_row(rows, name, uid)
     if row:
@@ -224,8 +275,8 @@ async def bot_respond(request: Request):
         'matched': False,
         'profile': {},
         'instruction': 'greet_new_friend_ask_name',
-        'sample_reply': 'สวัสดีครับ พี่ชื่ออะไรเอ่ย? ผมอยากจำพี่ไว้เป็นเพื่อนคู่ใจ',
-        'next_action': 'append_to_NameRegistry',
+        'sample_reply': f'สวัสดีครับ{"คุณ" + name if name else "พี่"}! น้องจำชื่อพี่แล้วนะครับ 😊 มีอะไรให้ช่วยบอกได้เลยครับ',
+        'next_action': 'saved_to_registry',
         'policy': 'no_uid_lock_v3'
     }
 
