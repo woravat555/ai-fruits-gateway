@@ -28,7 +28,7 @@ BOT_FIELD = {
 
 
 async def _alert(b, u, d, f, s, t):
-    k = f"{b}:{o}"
+    k = f"{b}:{u}"
     if k in _alerted:
         return
     _alerted.add(k)
@@ -42,7 +42,7 @@ async def _alert(b, u, d, f, s, t):
     txt = f"New member: {d}\nBot: {BOT_NAMES.get(b, b)}\nSource: {src}\nID: {u}\n{f[:80]}"
     try:
         async with httpx.AsyncClient(timeout=8) as c:
-            await c.post("https://api.line.me/v2/bot/message/push", headers={"Authorization": f"Bearer {t}", "Content-Type": "application/json"}, json={"to": CEW_ID, "messages": [{"type": "text", "text": txt}]})
+            await c.post("https://api.line.me/v2/bot/message/push", headers={"Authorization": f"Bearer {t}", "Content-Type": "application/json"}, json={"to": CEO_ID, "messages": [{"type": "text", "text": txt}]})
     except Exception as e:
         logger.warning(f"alert fail: {e}")
 
@@ -54,7 +54,7 @@ async def _save(b, u, d, s, f, t):
         return
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"https://api.airtable.com/v0/{BASE}/UnifiedProfiles", headers={"Authorization": f"Bearer {PAV}"}, params={"filterByFormula": f"{{{lf}}}='{u}'", "maxRecords": 1})
+            r = await c.get(f"https://api.airtable.com/v0/{BASE}/UnifiedProfiles", headers={"Authorization": f"Bearer {PAT}"}, params={"filterByFormula": f"{{{lf}}}='{u}'", "maxRecords": 1})
             ex = r.json().get("records", []) if r.status_code == 200 else []
             if not ex:
                 uid = f"AUTO-{datetime.now().strftime('%Y%m%d')}-{len(_recent)+1:04d}"
@@ -62,7 +62,7 @@ async def _save(b, u, d, s, f, t):
                 logger.info(f"[SMART-REG] {d} saved via {b}")
                 await _alert(b, u, d, f, s, t)
             else:
-                await c.patch(f"https://api.airtable.com/v0/{BASE}/UnifiedProfiles/{ex[0]['id']}", headers={"Authorization": f"Bearer {PAV}", "Content-Type": "application/json"}, json={"fields": {"LastSeenOA": b, "LastSeenDate": datetime.now().isoformat()}})
+                await c.patch(f"https://api.airtable.com/v0/{BASE}/UnifiedProfiles/{ex[0]['id']}", headers={"Authorization": f"Bearer {PAT}", "Content-Type": "application/json"}, json={"fields": {"LastSeenOA": b, "LastSeenDate": datetime.now().isoformat()}})
     except Exception as e:
         logger.warning(f"[SMART-REG] err: {e}")
         await _alert(b, u, d, f, s, t)
